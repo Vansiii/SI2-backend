@@ -1,0 +1,5 @@
+Django>=6.0,<7.0
+djangorestframework>=3.16,<4.0
+dj-database-url>=3.0,<4.0
+python-dotenv>=1.1,<2.0
+psycopg[binary]>=3.2,<4.0
