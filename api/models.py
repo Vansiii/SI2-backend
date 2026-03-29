@@ -73,3 +73,47 @@ class FinancialInstitutionMembership(TimeStampedModel):
 
 	def __str__(self) -> str:
 		return f'{self.user} -> {self.institution} ({self.role})'
+
+
+# Parte erick sprint 0
+class Permission(TimeStampedModel):
+	code = models.CharField(max_length=80, unique=True)
+	name = models.CharField(max_length=120)
+	description = models.TextField(blank=True)
+	is_active = models.BooleanField(default=True)
+
+	class Meta:
+		db_table = 'permissions'
+		ordering = ['name']
+
+	def __str__(self) -> str:
+		return f'{self.code} - {self.name}'
+
+
+class Role(TimeStampedModel):
+	institution = models.ForeignKey(
+		FinancialInstitution,
+		on_delete=models.CASCADE,
+		related_name='roles',
+	)
+	name = models.CharField(max_length=100)
+	description = models.TextField(blank=True)
+	is_active = models.BooleanField(default=True)
+	permissions = models.ManyToManyField(
+		Permission,
+		blank=True,
+		related_name='roles',
+	)
+
+	class Meta:
+		db_table = 'roles'
+		ordering = ['name']
+		constraints = [
+			models.UniqueConstraint(
+				fields=['institution', 'name'],
+				name='uniq_role_name_per_institution',
+			)
+		]
+
+	def __str__(self) -> str:
+		return f'{self.name} ({self.institution.slug})'
