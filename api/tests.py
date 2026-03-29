@@ -3,7 +3,12 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import FinancialInstitution, FinancialInstitutionMembership
+from api.models import (
+	FinancialInstitution,
+	FinancialInstitutionMembership,
+	Permission,
+	Role,
+)
 
 
 class RegisterUserAPITests(APITestCase):
@@ -78,3 +83,149 @@ class RegisterUserAPITests(APITestCase):
 
 		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 		self.assertEqual(response.data['institution']['institution_type'], 'fintech')
+
+
+# Parte erick sprint 0
+class RoleManagementAPITests(APITestCase):
+	def setUp(self):
+		self.user_model = get_user_model()
+		self.admin_user = self.user_model.objects.create_user(
+			username='admin@banco.com',
+			email='admin@banco.com',
+			password='PwdSegura123*',
+		)
+		self.institution = FinancialInstitution.objects.create(
+			name='Banco Futuro',
+			slug='banco-futuro',
+			institution_type=FinancialInstitution.InstitutionType.BANKING,
+			created_by=self.admin_user,
+		)
+		FinancialInstitutionMembership.objects.create(
+			institution=self.institution,
+			user=self.admin_user,
+			role=FinancialInstitutionMembership.Role.ADMIN,
+		)
+
+		self.permission_view_users = Permission.objects.create(
+			code='users.view.test',
+			name='Ver usuarios (test)',
+			description='Permiso para pruebas de visualizacion de usuarios.',
+		)
+		self.permission_manage_roles = Permission.objects.create(
+			code='roles.manage.test',
+			name='Gestionar roles (test)',
+			description='Permiso para pruebas de administracion de roles.',
+		)
+
+	def test_create_role_with_valid_data(self):
+		url = reverse('role-list-create')
+		payload = {
+			'institution': self.institution.id,
+			'name': 'Oficial de Garantias',
+			'description': 'Rol encargado de validar garantias.',
+		}
+
+		response = self.client.post(url, payload, format='json')
+
+		self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+		self.assertTrue(
+			Role.objects.filter(
+				institution=self.institution,
+				name='Oficial de Garantias',
+				is_active=True,
+			).exists()
+		)
+
+	def test_list_roles_returns_registered_roles(self):
+		role = Role.objects.create(
+			institution=self.institution,
+			name='Analista',
+			description='Rol de analisis crediticio.',
+		)
+		url = reverse('role-list-create')
+
+		response = self.client.get(url, format='json')
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(len(response.data), 1)
+		self.assertEqual(response.data[0]['id'], role.id)
+
+	def test_update_role_information(self):
+		role = Role.objects.create(
+			institution=self.institution,
+			name='Analista',
+			description='Descripcion inicial.',
+		)
+		url = reverse('role-detail', kwargs={'role_id': role.id})
+		payload = {
+			'name': 'Analista Senior',
+			'description': 'Descripcion actualizada.',
+		}
+
+		response = self.client.patch(url, payload, format='json')
+
+		role.refresh_from_db()
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(role.name, 'Analista Senior')
+		self.assertEqual(role.description, 'Descripcion actualizada.')
+
+	def test_soft_delete_role(self):
+		role = Role.objects.create(
+			institution=self.institution,
+			name='Gerente de Sucursal',
+			description='Rol gerencial',
+		)
+		url = reverse('role-detail', kwargs={'role_id': role.id})
+
+		response = self.client.delete(url)
+
+		role.refresh_from_db()
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertFalse(role.is_active)
+
+	def test_permission_list_returns_available_permissions(self):
+		url = reverse('permission-list')
+
+		response = self.client.get(url, format='json')
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		permission_codes = [item['code'] for item in response.data]
+		self.assertIn('users.view.test', permission_codes)
+		self.assertIn('roles.manage.test', permission_codes)
+
+	def test_assign_permissions_to_role(self):
+		role = Role.objects.create(
+			institution=self.institution,
+			name='Supervisor',
+			description='Supervisa operaciones.',
+		)
+		url = reverse('role-assign-permissions', kwargs={'role_id': role.id})
+		payload = {
+			'permission_ids': [self.permission_view_users.id, self.permission_manage_roles.id],
+		}
+
+		response = self.client.put(url, payload, format='json')
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		role.refresh_from_db()
+		self.assertEqual(role.permissions.count(), 2)
+
+	def test_remove_permission_from_role(self):
+		role = Role.objects.create(
+			institution=self.institution,
+			name='Analista Senior',
+			description='Analiza solicitudes complejas.',
+		)
+		role.permissions.add(self.permission_view_users, self.permission_manage_roles)
+
+		url = reverse(
+			'role-remove-permission',
+			kwargs={'role_id': role.id, 'permission_id': self.permission_manage_roles.id},
+		)
+
+		response = self.client.delete(url)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		role.refresh_from_db()
+		self.assertEqual(role.permissions.count(), 1)
+		self.assertTrue(role.permissions.filter(id=self.permission_view_users.id).exists())
