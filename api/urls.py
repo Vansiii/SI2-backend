@@ -5,6 +5,7 @@ from .views import health_check
 urlpatterns = [
     path('health/', health_check, name='health-check'),
     path('', include('api.registration.urls')),
+    path('', include('api.authentication.urls')),
     # Parte erick sprint 0
     path('', include('api.roles.urls')),
 ]
