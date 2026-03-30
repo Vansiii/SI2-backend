@@ -42,7 +42,14 @@ class RegisterUserAPITests(APITestCase):
 			institution=institution,
 			user=user,
 		)
-		self.assertEqual(membership.role, FinancialInstitutionMembership.Role.ADMIN)
+		# Verificar que se creó el membership
+		self.assertTrue(membership.is_active)
+		
+		# Verificar que se creó el UserRole
+		from api.models import UserRole
+		user_role = UserRole.objects.filter(user=user, institution=institution, is_active=True).first()
+		self.assertIsNotNone(user_role)
+		self.assertEqual(user_role.role.name, 'Administrador de Institución')
 
 	def test_register_user_fails_when_email_already_exists(self):
 		user_model = get_user_model()
@@ -103,7 +110,30 @@ class RoleManagementAPITests(APITestCase):
 		FinancialInstitutionMembership.objects.create(
 			institution=self.institution,
 			user=self.admin_user,
-			role=FinancialInstitutionMembership.Role.ADMIN,
+		)
+		
+		# Crear UserProfile y UserRole para el admin
+		from api.models import UserProfile, UserRole, Role
+		UserProfile.objects.create(
+			user=self.admin_user,
+			user_type='tenant_user'
+		)
+		
+		# Crear rol de administrador
+		admin_role = Role.objects.create(
+			institution=self.institution,
+			name='Administrador de Institución',
+			description='Administrador con acceso completo',
+			is_active=True
+		)
+		
+		# Asignar rol al usuario
+		UserRole.objects.create(
+			user=self.admin_user,
+			role=admin_role,
+			institution=self.institution,
+			assigned_by=self.admin_user,
+			is_active=True
 		)
 
 		self.permission_view_users = Permission.objects.create(

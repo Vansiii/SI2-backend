@@ -1,11 +1,48 @@
 from django.conf import settings
 from django.db import models
+from api.managers import TenantManager
 
 
 class TimeStampedModel(models.Model):
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True)
 
+	class Meta:
+		abstract = True
+
+
+class TenantModel(TimeStampedModel):
+	"""
+	Modelo base abstracto para modelos multi-tenant.
+	
+	Proporciona:
+	- Campo institution (ForeignKey a FinancialInstitution)
+	- Manager objects que filtra automáticamente por tenant
+	- Manager all_objects sin filtrar (para superadmin)
+	
+	Uso:
+		class MyModel(TenantModel):
+			name = models.CharField(max_length=100)
+			# ... otros campos ...
+	
+	Los queries usando objects se filtrarán automáticamente por tenant:
+		MyModel.objects.all()  # Solo del tenant actual
+		MyModel.all_objects.all()  # Todos los tenants
+	"""
+	
+	institution = models.ForeignKey(
+		'FinancialInstitution',
+		on_delete=models.CASCADE,
+		related_name='%(class)s_set',
+		help_text='Institución financiera a la que pertenece este registro'
+	)
+	
+	# Manager con filtrado automático por tenant
+	objects = TenantManager()
+	
+	# Manager sin filtrar (para superadmin y casos especiales)
+	all_objects = models.Manager()
+	
 	class Meta:
 		abstract = True
 
@@ -42,12 +79,6 @@ class FinancialInstitution(TimeStampedModel):
 
 
 class FinancialInstitutionMembership(TimeStampedModel):
-	class Role(models.TextChoices):
-		ADMIN = 'admin', 'Administrador'
-		ANALYST = 'analyst', 'Analista de Credito'
-		LOAN_OFFICER = 'loan_officer', 'Oficial de Credito'
-		MANAGER = 'manager', 'Gerente'
-
 	institution = models.ForeignKey(
 		FinancialInstitution,
 		on_delete=models.CASCADE,
@@ -58,7 +89,6 @@ class FinancialInstitutionMembership(TimeStampedModel):
 		on_delete=models.CASCADE,
 		related_name='institution_memberships',
 	)
-	role = models.CharField(max_length=20, choices=Role.choices, default=Role.ADMIN)
 	is_active = models.BooleanField(default=True)
 
 	class Meta:
@@ -72,7 +102,7 @@ class FinancialInstitutionMembership(TimeStampedModel):
 		ordering = ['-created_at']
 
 	def __str__(self) -> str:
-		return f'{self.user} -> {self.institution} ({self.role})'
+		return f'{self.user} -> {self.institution}'
 
 
 
@@ -210,6 +240,7 @@ class LoginAttempt(TimeStampedModel):
 			tuple: (is_blocked: bool, remaining_minutes: int)
 		"""
 		from django.utils import timezone
+		import math
 
 		time_threshold = timezone.now() - timezone.timedelta(minutes=window_minutes)
 		
@@ -232,7 +263,7 @@ class LoginAttempt(TimeStampedModel):
 				# Calcular minutos restantes hasta que expire el bloqueo
 				unlock_time = oldest_attempt.attempted_at + timezone.timedelta(minutes=window_minutes)
 				remaining = (unlock_time - timezone.now()).total_seconds() / 60
-				remaining_minutes = max(1, int(remaining))
+				remaining_minutes = max(1, math.ceil(remaining))  # Redondear hacia arriba
 				return True, remaining_minutes
 
 		return False, 0
@@ -273,7 +304,7 @@ class AuthChallenge(TimeStampedModel):
 	user_agent = models.TextField(blank=True)
 	# Datos adicionales para completar el login después de 2FA
 	institution_id = models.IntegerField(null=True, blank=True)
-	role = models.CharField(max_length=20, blank=True)
+	role = models.CharField(max_length=100, blank=True)
 
 	class Meta:
 		db_table = 'auth_challenges'
@@ -523,12 +554,13 @@ class Permission(TimeStampedModel):
 		return f'{self.code} - {self.name}'
 
 
-class Role(TimeStampedModel):
-	institution = models.ForeignKey(
-		FinancialInstitution,
-		on_delete=models.CASCADE,
-		related_name='roles',
-	)
+class Role(TenantModel):
+	"""
+	Rol dinámico con permisos asignables.
+	
+	Hereda de TenantModel para aislamiento automático por tenant.
+	El campo institution se hereda de TenantModel.
+	"""
 	name = models.CharField(max_length=100)
 	description = models.TextField(blank=True)
 	is_active = models.BooleanField(default=True)
@@ -550,3 +582,155 @@ class Role(TimeStampedModel):
 
 	def __str__(self) -> str:
 		return f'{self.name} ({self.institution.slug})'
+
+
+# ============================================================
+# SPRINT 1: UserProfile y UserRole
+# Sistema de perfiles de usuario y asignación de roles dinámicos
+# ============================================================
+
+class UserProfile(TimeStampedModel):
+	"""
+	Perfil extendido de usuario con tipo de usuario y datos adicionales.
+	
+	Tipos de usuario:
+	- saas_admin: Superadministrador SaaS (gestiona toda la plataforma)
+	- tenant_user: Usuario de tenant (pertenece a una institución financiera)
+	"""
+	user = models.OneToOneField(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.CASCADE,
+		related_name='profile'
+	)
+	user_type = models.CharField(
+		max_length=20,
+		choices=[
+			('saas_admin', 'Superadministrador SaaS'),
+			('tenant_user', 'Usuario de Tenant'),
+		],
+		default='tenant_user',
+		help_text='Tipo de usuario en el sistema'
+	)
+	
+	# Datos de contacto
+	phone = models.CharField(max_length=20, blank=True)
+	
+	# Datos laborales
+	position = models.CharField(max_length=100, blank=True, help_text='Cargo o posición')
+	department = models.CharField(max_length=100, blank=True, help_text='Departamento')
+	
+	# Preferencias
+	avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+	timezone = models.CharField(max_length=50, default='America/La_Paz')
+	language = models.CharField(max_length=10, default='es')
+	notification_preferences = models.JSONField(default=dict, blank=True)
+	
+	class Meta:
+		db_table = 'user_profiles'
+		ordering = ['-created_at']
+	
+	def __str__(self) -> str:
+		return f'Profile: {self.user.email} ({self.user_type})'
+	
+	def is_saas_admin(self) -> bool:
+		"""
+		Verifica si el usuario es superadministrador SaaS.
+		
+		Returns:
+			bool: True si es superadmin SaaS
+		"""
+		return self.user_type == 'saas_admin'
+	
+	def get_permissions_in_institution(self, institution):
+		"""
+		Obtiene todos los permisos del usuario en una institución específica.
+		
+		Args:
+			institution: Instancia de FinancialInstitution
+		
+		Returns:
+			QuerySet de Permission
+		"""
+		if self.is_saas_admin():
+			# Superadmin tiene todos los permisos
+			return Permission.objects.filter(is_active=True)
+		
+		# Obtener roles activos del usuario en la institución
+		user_roles = self.user.user_roles.filter(
+			institution=institution,
+			is_active=True
+		)
+		
+		# Obtener permisos únicos de todos los roles
+		return Permission.objects.filter(
+			roles__user_assignments__in=user_roles,
+			is_active=True
+		).distinct()
+	
+	def has_permission(self, permission_code: str, institution) -> bool:
+		"""
+		Verifica si el usuario tiene un permiso específico en una institución.
+		
+		Args:
+			permission_code: Código del permiso (ej: 'users.view')
+			institution: Instancia de FinancialInstitution
+		
+		Returns:
+			bool: True si tiene el permiso
+		"""
+		if self.is_saas_admin():
+			return True
+		
+		return self.get_permissions_in_institution(institution).filter(
+			code=permission_code
+		).exists()
+
+
+class UserRole(TimeStampedModel):
+	"""
+	Asignación de roles a usuarios en instituciones específicas.
+	
+	Un usuario puede tener múltiples roles en una institución.
+	Reemplaza el campo 'role' hardcoded de FinancialInstitutionMembership.
+	"""
+	user = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		on_delete=models.CASCADE,
+		related_name='user_roles'
+	)
+	role = models.ForeignKey(
+		Role,
+		on_delete=models.CASCADE,
+		related_name='user_assignments'
+	)
+	institution = models.ForeignKey(
+		FinancialInstitution,
+		on_delete=models.CASCADE,
+		related_name='user_role_assignments'
+	)
+	is_active = models.BooleanField(default=True)
+	assigned_by = models.ForeignKey(
+		settings.AUTH_USER_MODEL,
+		null=True,
+		blank=True,
+		on_delete=models.SET_NULL,
+		related_name='role_assignments_made',
+		help_text='Usuario que asignó este rol'
+	)
+	
+	class Meta:
+		db_table = 'user_roles'
+		ordering = ['-created_at']
+		constraints = [
+			models.UniqueConstraint(
+				fields=['user', 'role', 'institution'],
+				name='uniq_user_role_institution'
+			)
+		]
+		indexes = [
+			models.Index(fields=['user', 'institution', 'is_active']),
+			models.Index(fields=['role', 'is_active']),
+		]
+	
+	def __str__(self) -> str:
+		return f'{self.user.email} -> {self.role.name} @ {self.institution.slug}'

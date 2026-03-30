@@ -48,7 +48,38 @@ class RegisterUserService:
         membership = FinancialInstitutionMembership.objects.create(
             institution=institution,
             user=user,
-            role=FinancialInstitutionMembership.Role.ADMIN,
+        )
+        
+        # Crear o obtener rol de Administrador para la institución
+        from api.models import Role, UserRole, Permission
+        from api.services.permission_service import PermissionService
+        
+        admin_role, created = Role.objects.get_or_create(
+            institution=institution,
+            name='Administrador de Institución',
+            defaults={
+                'description': 'Administrador con acceso completo a la gestión de la institución',
+                'is_active': True
+            }
+        )
+        
+        # Si el rol fue creado, asignar TODOS los permisos disponibles
+        if created:
+            # Obtener todos los permisos activos del catálogo
+            all_permissions = Permission.objects.filter(is_active=True)
+            
+            # Asignar todos los permisos disponibles
+            admin_role.permissions.set(all_permissions)
+            
+            print(f"✓ Rol 'Administrador de Institución' creado con {all_permissions.count()} permisos")
+        
+        # Asignar rol al usuario
+        UserRole.objects.create(
+            user=user,
+            role=admin_role,
+            institution=institution,
+            assigned_by=user,  # Auto-asignado en registro
+            is_active=True
         )
 
         return RegisterUserResult(user=user, institution=institution, membership=membership)

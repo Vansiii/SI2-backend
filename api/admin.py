@@ -13,8 +13,8 @@ class FinancialInstitutionAdmin(admin.ModelAdmin):
 
 @admin.register(FinancialInstitutionMembership)
 class FinancialInstitutionMembershipAdmin(admin.ModelAdmin):
-	list_display = ('id', 'user', 'institution', 'role', 'is_active', 'created_at')
-	list_filter = ('role', 'is_active', 'created_at')
+	list_display = ('id', 'user', 'institution', 'is_active', 'created_at')
+	list_filter = ('is_active', 'created_at')
 	search_fields = ('user__username', 'user__email', 'institution__name')
 	readonly_fields = ('created_at', 'updated_at')
 
