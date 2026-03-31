@@ -4,6 +4,7 @@ djangorestframework-simplejwt>=5.3,<6.0
 dj-database-url>=3.0,<4.0
 python-dotenv>=1.1,<2.0
 psycopg[binary]>=3.2,<4.0
+gunicorn>=21.2,<24.0
 # 2FA Dependencies
 pyotp>=2.9,<3.0
 qrcode[pil]>=7.4,<8.0
