@@ -91,6 +91,9 @@ class LoginAPIView(APIView):
                 'institution_type': result.institution.institution_type,
             },
             'role': result.role,
+            'user_type': result.user_type,
+            'roles': result.roles,
+            'permissions': result.permissions,
             'requires_2fa': result.requires_2fa,
         }
 
@@ -419,6 +422,9 @@ class TwoFactorLoginVerifyAPIView(APIView):
                 'institution_type': result.institution.institution_type,
             },
             'role': result.role,
+            'user_type': result.user_type,
+            'roles': result.roles,
+            'permissions': result.permissions,
         }
 
         return Response(response_payload, status=status.HTTP_200_OK)

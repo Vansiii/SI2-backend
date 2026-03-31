@@ -25,10 +25,20 @@ class LoginResult:
     refresh_token: str
     institution: object
     role: str
+    user_type: str = 'tenant_user'
+    roles: list = None
+    permissions: list = None
     requires_2fa: bool = False
     challenge_token: str = ''
     expires_in: int = 0
     method: str = 'totp'  # Método de 2FA: 'totp' o 'email'
+    
+    def __post_init__(self):
+        # Inicializar listas vacías si son None
+        if self.roles is None:
+            object.__setattr__(self, 'roles', [])
+        if self.permissions is None:
+            object.__setattr__(self, 'permissions', [])
 
 
 class LoginService:
@@ -108,8 +118,26 @@ class LoginService:
                 was_successful=False,
                 failure_reason='user_not_found',
             )
+            
+            # Verificar si ahora está bloqueado después de este intento
+            is_blocked_now, remaining_minutes = LoginAttempt.is_blocked(email)
+            if is_blocked_now:
+                raise serializers.ValidationError(
+                    {
+                        'detail': f'Cuenta bloqueada temporalmente por múltiples intentos fallidos. '
+                                  f'Intenta nuevamente en {remaining_minutes} minuto(s).'
+                    },
+                    code='account_locked'
+                )
+            
+            # Calcular intentos restantes
+            failed_attempts = LoginAttempt.get_recent_failures(email)
+            attempts_remaining = max(0, 5 - failed_attempts)
+            
             raise serializers.ValidationError(
-                {'detail': 'Credenciales inválidas.'},
+                {
+                    'detail': f'Credenciales inválidas. Te quedan {attempts_remaining} intento(s).'
+                },
                 code='invalid_credentials'
             )
 
@@ -129,8 +157,26 @@ class LoginService:
                 was_successful=False,
                 failure_reason='invalid_password',
             )
+            
+            # Verificar si ahora está bloqueado después de este intento
+            is_blocked_now, remaining_minutes = LoginAttempt.is_blocked(email)
+            if is_blocked_now:
+                raise serializers.ValidationError(
+                    {
+                        'detail': f'Cuenta bloqueada temporalmente por múltiples intentos fallidos. '
+                                  f'Intenta nuevamente en {remaining_minutes} minuto(s).'
+                    },
+                    code='account_locked'
+                )
+            
+            # Calcular intentos restantes
+            failed_attempts = LoginAttempt.get_recent_failures(email)
+            attempts_remaining = max(0, 5 - failed_attempts)
+            
             raise serializers.ValidationError(
-                {'detail': 'Credenciales inválidas.'},
+                {
+                    'detail': f'Credenciales inválidas. Te quedan {attempts_remaining} intento(s).'
+                },
                 code='invalid_credentials'
             )
 
@@ -191,6 +237,39 @@ class LoginService:
         # Limpiar intentos fallidos anteriores
         LoginAttempt.clear_failed_attempts(email)
 
+        # Obtener tipo de usuario y permisos
+        user_type = 'tenant_user'
+        roles = []
+        permissions = []
+        
+        if hasattr(authenticated_user, 'profile'):
+            user_type = authenticated_user.profile.user_type
+            
+            if authenticated_user.profile.is_saas_admin():
+                # Superadmin SaaS tiene todos los permisos
+                roles = ['Superadministrador SaaS']
+                permissions = ['*']
+            else:
+                # Usuario de tenant - obtener roles y permisos
+                from api.models import UserRole, Permission
+                
+                user_roles = UserRole.objects.filter(
+                    user=authenticated_user,
+                    institution=membership.institution,
+                    is_active=True
+                ).select_related('role')
+                
+                # Obtener nombres de roles
+                roles = [ur.role.name for ur in user_roles]
+                
+                # Obtener permisos únicos de todos los roles
+                permission_codes = Permission.objects.filter(
+                    roles__user_assignments__in=user_roles,
+                    is_active=True
+                ).values_list('code', flat=True).distinct()
+                
+                permissions = list(permission_codes)
+        
         # Verificar si el usuario tiene 2FA habilitado
         try:
             two_factor = TwoFactorAuth.objects.get(user=authenticated_user, is_enabled=True)
@@ -212,6 +291,13 @@ class LoginService:
                 purpose='2fa_login'
             ).update(is_used=True)
             
+            # Obtener rol principal del usuario (el primero activo)
+            user_role = authenticated_user.user_roles.filter(
+                institution=membership.institution,
+                is_active=True
+            ).first()
+            role_name = user_role.role.name if user_role else 'Sin rol'
+            
             # Crear nuevo challenge
             AuthChallenge.objects.create(
                 user=authenticated_user,
@@ -221,7 +307,7 @@ class LoginService:
                 ip_address=payload.ip_address or '0.0.0.0',
                 user_agent=payload.user_agent or '',
                 institution_id=membership.institution.id,
-                role=membership.role,
+                role=role_name,
             )
             
             # Si el método es EMAIL, generar y enviar código
@@ -247,7 +333,10 @@ class LoginService:
                 access_token='',  # Vacío hasta verificar 2FA
                 refresh_token='',  # Vacío hasta verificar 2FA
                 institution=membership.institution,
-                role=membership.role,
+                role=role_name,
+                user_type=user_type,
+                roles=roles,
+                permissions=permissions,
                 requires_2fa=True,
                 challenge_token=challenge_token,
                 expires_in=300,  # 5 minutos en segundos
@@ -256,13 +345,23 @@ class LoginService:
         except TwoFactorAuth.DoesNotExist:
             # Usuario NO tiene 2FA - retornar tokens normalmente
             pass
+        
+        # Obtener rol principal del usuario (el primero activo)
+        user_role = authenticated_user.user_roles.filter(
+            institution=membership.institution,
+            is_active=True
+        ).first()
+        role_name = user_role.role.name if user_role else 'Sin rol'
 
         return LoginResult(
             user=authenticated_user,
             access_token=access_token,
             refresh_token=refresh_token,
             institution=membership.institution,
-            role=membership.role,
+            role=role_name,
+            user_type=user_type,
+            roles=roles,
+            permissions=permissions,
             requires_2fa=False,
         )
 
@@ -286,6 +385,16 @@ class TwoFactorLoginResult:
     refresh_token: str
     institution: object
     role: str
+    user_type: str = 'tenant_user'
+    roles: list = None
+    permissions: list = None
+    
+    def __post_init__(self):
+        # Inicializar listas vacías si son None
+        if self.roles is None:
+            object.__setattr__(self, 'roles', [])
+        if self.permissions is None:
+            object.__setattr__(self, 'permissions', [])
 
 
 class TwoFactorLoginService:
@@ -419,11 +528,54 @@ class TwoFactorLoginService:
 
         # Limpiar intentos fallidos anteriores
         LoginAttempt.clear_failed_attempts(authenticated_user.email)
+        
+        # Obtener tipo de usuario y permisos
+        user_type = 'tenant_user'
+        roles = []
+        permissions = []
+        
+        if hasattr(authenticated_user, 'profile'):
+            user_type = authenticated_user.profile.user_type
+            
+            if authenticated_user.profile.is_saas_admin():
+                # Superadmin SaaS tiene todos los permisos
+                roles = ['Superadministrador SaaS']
+                permissions = ['*']
+            else:
+                # Usuario de tenant - obtener roles y permisos
+                from api.models import UserRole, Permission
+                
+                user_roles = UserRole.objects.filter(
+                    user=authenticated_user,
+                    institution=membership.institution,
+                    is_active=True
+                ).select_related('role')
+                
+                # Obtener nombres de roles
+                roles = [ur.role.name for ur in user_roles]
+                
+                # Obtener permisos únicos de todos los roles
+                permission_codes = Permission.objects.filter(
+                    roles__user_assignments__in=user_roles,
+                    is_active=True
+                ).values_list('code', flat=True).distinct()
+                
+                permissions = list(permission_codes)
+        
+        # Obtener rol principal del usuario (el primero activo)
+        user_role = authenticated_user.user_roles.filter(
+            institution=membership.institution,
+            is_active=True
+        ).first()
+        role_name = user_role.role.name if user_role else 'Sin rol'
 
         return TwoFactorLoginResult(
             user=authenticated_user,
             access_token=access_token,
             refresh_token=refresh_token,
             institution=membership.institution,
-            role=membership.role,
+            role=role_name,
+            user_type=user_type,
+            roles=roles,
+            permissions=permissions,
         )

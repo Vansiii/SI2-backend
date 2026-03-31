@@ -50,6 +50,10 @@ class TwoFactorEnableService:
             defaults={'secret_key': '', 'method': 'totp'}
         )
 
+        # Guardar estado previo de habilitación
+        was_enabled = two_factor.is_enabled
+        previous_enabled_at = two_factor.enabled_at
+
         # Si ya existía, asegurar que el método sea TOTP
         if not created and two_factor.method != 'totp':
             two_factor.method = 'totp'
@@ -60,9 +64,16 @@ class TwoFactorEnableService:
         # Generar códigos de respaldo
         backup_codes = two_factor.generate_backup_codes(count=10)
 
-        # Marcar como NO habilitado (se habilitará después de verificar)
-        two_factor.is_enabled = False
-        two_factor.enabled_at = None
+        # Si ya estaba habilitado, mantenerlo habilitado (cambio de método)
+        # Si no estaba habilitado, marcarlo como NO habilitado (primera vez)
+        if not was_enabled:
+            two_factor.is_enabled = False
+            two_factor.enabled_at = None
+        else:
+            # Mantener el estado habilitado y la fecha
+            two_factor.is_enabled = True
+            two_factor.enabled_at = previous_enabled_at
+        
         two_factor.save()
 
         # Generar QR code

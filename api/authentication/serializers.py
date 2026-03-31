@@ -289,9 +289,7 @@ class TwoFactorEnableSerializer(serializers.Serializer):
         )
         
         if authenticated_user is None:
-            raise serializers.ValidationError({
-                'password': 'Contraseña incorrecta.'
-            })
+            raise serializers.ValidationError('Contraseña incorrecta.')
         
         return attrs
 
@@ -612,18 +610,14 @@ class TwoFactorSetMethodSerializer(serializers.Serializer):
         )
         
         if authenticated_user is None:
-            raise serializers.ValidationError({
-                'password': 'Contraseña incorrecta.'
-            })
+            raise serializers.ValidationError('Contraseña incorrecta.')
         
         # Verificar que tenga 2FA habilitado
         try:
             two_factor = TwoFactorAuth.objects.get(user=user, is_enabled=True)
             attrs['two_factor'] = two_factor
         except TwoFactorAuth.DoesNotExist:
-            raise serializers.ValidationError({
-                'detail': '2FA no está habilitado. Habilítalo primero.'
-            })
+            raise serializers.ValidationError('2FA no está habilitado. Habilítalo primero.')
         
         return attrs
 
@@ -678,9 +672,7 @@ class EmailTwoFactorEnableSerializer(serializers.Serializer):
         )
         
         if authenticated_user is None:
-            raise serializers.ValidationError({
-                'password': 'Contraseña incorrecta.'
-            })
+            raise serializers.ValidationError('Contraseña incorrecta.')
         
         return attrs
 
