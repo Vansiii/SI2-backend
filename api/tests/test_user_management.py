@@ -101,7 +101,6 @@ class UserManagementTestCase(TestCase):
 		FinancialInstitutionMembership.objects.create(
 			user=self.admin_user,
 			institution=self.institution1,
-			role='admin',
 			is_active=True
 		)
 		
@@ -128,7 +127,6 @@ class UserManagementTestCase(TestCase):
 		FinancialInstitutionMembership.objects.create(
 			user=self.viewer_user,
 			institution=self.institution1,
-			role='analyst',
 			is_active=True
 		)
 		
@@ -325,7 +323,6 @@ class UserManagementTestCase(TestCase):
 		FinancialInstitutionMembership.objects.create(
 			user=user_inst2,
 			institution=self.institution2,
-			role='admin',
 			is_active=True
 		)
 		
@@ -348,7 +345,6 @@ class UserManagementTestCase(TestCase):
 		FinancialInstitutionMembership.objects.create(
 			user=user_inst2,
 			institution=self.institution2,
-			role='admin',
 			is_active=True
 		)
 		

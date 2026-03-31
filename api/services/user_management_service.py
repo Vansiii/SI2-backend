@@ -122,7 +122,6 @@ class UserManagementService:
 		FinancialInstitutionMembership.objects.create(
 			user=user,
 			institution=institution,
-			role='admin',  # Rol hardcoded temporal (se eliminará en Sprint 5)
 			is_active=True
 		)
 		
