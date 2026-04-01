@@ -39,7 +39,7 @@ class EmailTwoFactorSendServiceTestCase(TestCase):
         )
         
         # Mock del servicio de email
-        mock_email_service.return_value.execute.return_value = None
+        mock_email_service.return_value.execute.return_value = MagicMock(success=True)
         
         service = EmailTwoFactorSendService()
         result = service.execute(
@@ -73,7 +73,7 @@ class EmailTwoFactorSendServiceTestCase(TestCase):
             EmailTwoFactorSendService,
         )
         
-        mock_email_service.return_value.execute.return_value = None
+        mock_email_service.return_value.execute.return_value = MagicMock(success=True)
         
         # Crear código anterior
         EmailTwoFactorCode.objects.create(
@@ -127,6 +127,32 @@ class EmailTwoFactorSendServiceTestCase(TestCase):
         
         # Verificar que el código fue marcado como usado
         code = EmailTwoFactorCode.objects.get(challenge_token='test_token')
+        self.assertTrue(code.is_used)
+
+    @patch('api.services.email_service.EmailService')
+    def test_send_code_email_result_unsuccessful(self, mock_email_service):
+        """Test que resultado success=False del email también falla e invalida el código."""
+        from api.services.email_two_factor_service import (
+            EmailTwoFactorSendInput,
+            EmailTwoFactorSendService,
+        )
+        from rest_framework import serializers
+
+        mock_email_service.return_value.execute.return_value = MagicMock(success=False)
+
+        service = EmailTwoFactorSendService()
+
+        with self.assertRaises(serializers.ValidationError):
+            service.execute(
+                EmailTwoFactorSendInput(
+                    user=self.user,
+                    challenge_token='test_token_unsuccessful',
+                    purpose='login',
+                    user_agent='Test Agent',
+                )
+            )
+
+        code = EmailTwoFactorCode.objects.get(challenge_token='test_token_unsuccessful')
         self.assertTrue(code.is_used)
 
 
@@ -312,7 +338,7 @@ class EmailTwoFactorResendServiceTestCase(TestCase):
             EmailTwoFactorResendService,
         )
         
-        mock_email_service.return_value.execute.return_value = None
+        mock_email_service.return_value.execute.return_value = MagicMock(success=True)
         
         service = EmailTwoFactorResendService()
         result = service.execute(
@@ -381,14 +407,13 @@ class EmailTwoFactorLoginIntegrationTestCase(TestCase):
         FinancialInstitutionMembership.objects.create(
             user=self.user,
             institution=self.institution,
-            role='admin',
             is_active=True,
         )
 
     @patch('api.services.email_service.EmailService')
     def test_login_with_email_2fa_sends_code(self, mock_email_service):
         """Test que login con 2FA email envía código automáticamente."""
-        mock_email_service.return_value.execute.return_value = None
+        mock_email_service.return_value.execute.return_value = MagicMock(success=True)
         
         # Habilitar 2FA por email
         TwoFactorAuth.objects.create(
@@ -424,7 +449,7 @@ class EmailTwoFactorLoginIntegrationTestCase(TestCase):
     @patch('api.services.email_service.EmailService')
     def test_verify_email_2fa_with_valid_code(self, mock_email_service):
         """Test verificar código de email válido."""
-        mock_email_service.return_value.execute.return_value = None
+        mock_email_service.return_value.execute.return_value = MagicMock(success=True)
         
         # Habilitar 2FA por email
         TwoFactorAuth.objects.create(
@@ -473,7 +498,7 @@ class EmailTwoFactorLoginIntegrationTestCase(TestCase):
     @patch('api.services.email_service.EmailService')
     def test_verify_email_2fa_with_invalid_code(self, mock_email_service):
         """Test verificar código de email inválido."""
-        mock_email_service.return_value.execute.return_value = None
+        mock_email_service.return_value.execute.return_value = MagicMock(success=True)
         
         # Habilitar 2FA por email
         TwoFactorAuth.objects.create(
@@ -511,7 +536,7 @@ class EmailTwoFactorLoginIntegrationTestCase(TestCase):
     @patch('api.services.email_service.EmailService')
     def test_resend_email_2fa_code(self, mock_email_service):
         """Test reenviar código de email."""
-        mock_email_service.return_value.execute.return_value = None
+        mock_email_service.return_value.execute.return_value = MagicMock(success=True)
         
         # Habilitar 2FA por email
         TwoFactorAuth.objects.create(

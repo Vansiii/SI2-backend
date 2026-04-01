@@ -95,7 +95,13 @@ class EmailTwoFactorSendService:
         )
         
         try:
-            email_service.execute(email_input)
+            email_result = email_service.execute(email_input)
+
+            if not email_result.success:
+                raise serializers.ValidationError(
+                    {'detail': 'Error al enviar el código por email. Intenta nuevamente.'},
+                    code='email_send_failed'
+                )
         except Exception as e:
             # Si falla el envío, marcar código como usado para que no quede activo
             email_code.is_used = True
