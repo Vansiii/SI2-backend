@@ -170,6 +170,11 @@ EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', 10))
 EMAIL_HOST_USER = os.getenv('BREVO_SMTP_USER') or os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY') or os.getenv('EMAIL_HOST_PASSWORD')
 
+# Delivery method: smtp | brevo_api | smtp_with_brevo_fallback
+EMAIL_DELIVERY_METHOD = os.getenv('EMAIL_DELIVERY_METHOD', 'smtp').strip().lower()
+BREVO_API_KEY = os.getenv('BREVO_API_KEY')
+BREVO_API_URL = os.getenv('BREVO_API_URL', 'https://api.brevo.com/v3/smtp/email')
+
 DEFAULT_FROM_EMAIL = (
     os.getenv('DEFAULT_FROM_EMAIL')
     or os.getenv('EMAIL_FROM')
