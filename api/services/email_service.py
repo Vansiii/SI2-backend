@@ -1,9 +1,13 @@
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -39,13 +43,38 @@ class EmailService:
             EmailResult con el resultado del envío
         """
         try:
+            if not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
+                logger.warning(
+                    'Email no enviado: faltan credenciales SMTP',
+                    extra={'to_email': payload.to_email},
+                )
+                return EmailResult(
+                    success=False,
+                    message='Configuración SMTP incompleta: faltan credenciales de email.',
+                    email_sent_to=payload.to_email,
+                )
+
             # Determinar remitente
             from_email = payload.from_email or settings.DEFAULT_FROM_EMAIL
             from_name = payload.from_name or settings.DEFAULT_FROM_NAME
+
+            if from_email == 'noreply@ejemplo.com':
+                logger.warning(
+                    'Email no enviado: DEFAULT_FROM_EMAIL mantiene valor de ejemplo',
+                    extra={'to_email': payload.to_email},
+                )
+                return EmailResult(
+                    success=False,
+                    message='DEFAULT_FROM_EMAIL no está configurado para producción.',
+                    email_sent_to=payload.to_email,
+                )
+
             from_address = f'{from_name} <{from_email}>'
 
             # Renderizar template HTML
-            html_content = render_to_string(payload.template_name, payload.context)
+            template_context = {'frontend_url': settings.FRONTEND_URL}
+            template_context.update(payload.context or {})
+            html_content = render_to_string(payload.template_name, template_context)
 
             # Crear email
             email = EmailMultiAlternatives(
@@ -68,6 +97,13 @@ class EmailService:
             )
 
         except Exception as e:
+            logger.exception(
+                'Error al enviar email',
+                extra={
+                    'to_email': payload.to_email,
+                    'template_name': payload.template_name,
+                },
+            )
             return EmailResult(
                 success=False,
                 message=f'Error al enviar email: {str(e)}',

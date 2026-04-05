@@ -5,6 +5,7 @@ import secrets
 from dataclasses import dataclass
 from typing import Optional
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
@@ -81,9 +82,7 @@ class PasswordResetRequestService:
         )
 
         # Construir link de recuperación
-        # TODO: Obtener el dominio del frontend desde settings
-        frontend_url = 'http://localhost:5173'  # Temporal
-        reset_link = f'{frontend_url}/reset-password?token={token}'
+        reset_link = f'{settings.FRONTEND_URL}/reset-password?token={token}'
 
         # Enviar email
         email_service = EmailService()

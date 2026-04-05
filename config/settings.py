@@ -21,6 +21,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
 
+def env_bool(name: str, default: bool) -> bool:
+    """Read boolean-like values from environment variables."""
+    return os.getenv(name, str(default)).strip().lower() == 'true'
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
@@ -28,7 +33,7 @@ load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() == 'true'
+DEBUG = env_bool('DJANGO_DEBUG', True)
 
 ALLOWED_HOSTS = [
     host.strip()
@@ -154,18 +159,26 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Email Configuration (Brevo SMTP)
 # https://docs.djangoproject.com/en/6.0/topics/email/
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('BREVO_SMTP_HOST', 'smtp-relay.brevo.com')
-EMAIL_PORT = int(os.getenv('BREVO_SMTP_PORT', 587))
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+
+EMAIL_HOST = os.getenv('BREVO_SMTP_HOST') or os.getenv('EMAIL_HOST', 'smtp-relay.brevo.com')
+EMAIL_PORT = int(os.getenv('BREVO_SMTP_PORT') or os.getenv('EMAIL_PORT', 587))
+EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
+EMAIL_USE_SSL = env_bool('EMAIL_USE_SSL', False)
 EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', 10))
 
-EMAIL_HOST_USER = os.getenv('BREVO_SMTP_USER')
-EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY')
+EMAIL_HOST_USER = os.getenv('BREVO_SMTP_USER') or os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY') or os.getenv('EMAIL_HOST_PASSWORD')
 
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@ejemplo.com')
+DEFAULT_FROM_EMAIL = (
+    os.getenv('DEFAULT_FROM_EMAIL')
+    or os.getenv('EMAIL_FROM')
+    or 'noreply@ejemplo.com'
+)
 DEFAULT_FROM_NAME = os.getenv('DEFAULT_FROM_NAME', 'Sistema Bancario')
+
+# Frontend URL used in links inside transactional emails.
+FRONTEND_URL = (os.getenv('FRONTEND_URL') or 'http://localhost:5173').rstrip('/')
 
 
 # JWT Configuration
