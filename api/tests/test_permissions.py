@@ -16,7 +16,7 @@ from api.models import (
     UserProfile,
     UserRole,
 )
-from api.permissions import HasPermission, require_permission
+from api.core.permissions import HasPermission, require_permission
 
 User = get_user_model()
 

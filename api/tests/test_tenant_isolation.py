@@ -14,7 +14,7 @@ from api.models import (
     UserProfile,
     UserRole
 )
-from api.managers import set_current_tenant, clear_current_tenant, get_current_tenant
+from api.core.managers import set_current_tenant, clear_current_tenant, get_current_tenant
 
 User = get_user_model()
 

@@ -9,4 +9,4 @@ class ApiConfig(AppConfig):
         """
         Importa los signals cuando la aplicación está lista.
         """
-        import api.signals
+        import api.users.signals

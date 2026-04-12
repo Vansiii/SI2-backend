@@ -4,7 +4,7 @@ Comando para sincronizar permisos con roles de Administrador de Institución.
 
 from django.core.management.base import BaseCommand
 
-from api.services.permission_service import PermissionService
+from api.roles.services import PermissionService
 
 
 class Command(BaseCommand):

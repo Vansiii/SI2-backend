@@ -8,11 +8,12 @@ También establece el tenant en thread-local storage para el TenantManager.
 
 Comportamiento:
 - Superadmin SaaS: request.tenant = None, request.user_type = 'saas_admin'
+- Cliente: request.tenant = Institution (desde Client), request.user_type = 'client'
 - Usuario de tenant: request.tenant = Institution, request.user_type = 'tenant_user'
 - Usuario no autenticado: request.tenant = None, request.user_type = None
 """
 
-from api.managers import set_current_tenant, clear_current_tenant
+from api.core.managers import set_current_tenant, clear_current_tenant
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 
@@ -23,7 +24,8 @@ class TenantMiddleware:
 	
 	Atributos inyectados:
 	- request.tenant: Instancia de FinancialInstitution o None
-	- request.user_type: 'saas_admin', 'tenant_user', o None
+	- request.user_type: 'saas_admin', 'client', 'tenant_user', o None
+	- request.user_institution_id: ID de la institución o None
 	"""
 	
 	def __init__(self, get_response):
@@ -49,10 +51,7 @@ class TenantMiddleware:
 		# Inicializar valores por defecto
 		request.tenant = None
 		request.user_type = None
-		
-		# DEBUG
-		print(f"\n=== DEBUG TenantMiddleware ===")
-		print(f"Path: {request.path}")
+		request.user_institution_id = None
 		
 		# Limpiar tenant anterior del thread-local
 		clear_current_tenant()
@@ -65,65 +64,61 @@ class TenantMiddleware:
 				if auth_result is not None:
 					user, token = auth_result
 					request.user = user
-					print(f"JWT Auth successful: {user.email}")
-				else:
-					print(f"JWT Auth returned None")
-			except AuthenticationFailed as e:
-				print(f"JWT Auth failed: {e}")
-			except Exception as e:
-				print(f"JWT Auth error: {e}")
-		
-		print(f"User authenticated: {request.user.is_authenticated}")
+			except AuthenticationFailed:
+				pass
+			except Exception:
+				pass
 		
 		# Solo procesar si el usuario está autenticado
 		if request.user.is_authenticated:
-			print(f"User: {request.user.email}")
-			
 			# Verificar si el usuario tiene perfil
 			if hasattr(request.user, 'profile'):
-				print(f"Has profile: True")
-				print(f"User type: {request.user.profile.user_type}")
-				
 				# Verificar si es superadmin SaaS
 				if request.user.profile.is_saas_admin():
 					request.tenant = None
 					request.user_type = 'saas_admin'
-					print(f"Is SaaS admin - tenant set to None")
+					request.user_institution_id = None
 					# Superadmin no tiene tenant - puede ver todo
 					set_current_tenant(None)
+				elif request.user.profile.is_client():
+					# Usuario es cliente - obtener institución desde Client
+					if hasattr(request.user, 'client_profile'):
+						client = request.user.client_profile
+						request.tenant = client.institution
+						request.user_type = 'client'
+						request.user_institution_id = client.institution.id
+						# Establecer tenant en thread-local para TenantManager
+						set_current_tenant(client.institution)
+					else:
+						# Cliente sin perfil de cliente (caso edge)
+						request.tenant = None
+						request.user_type = 'client'
+						request.user_institution_id = None
+						set_current_tenant(None)
 				else:
 					# Usuario de tenant - obtener su institución activa
 					membership = request.user.institution_memberships.filter(
 						is_active=True
 					).first()
 					
-					print(f"Membership query executed")
-					print(f"Membership found: {membership is not None}")
-					
 					if membership:
 						request.tenant = membership.institution
 						request.user_type = 'tenant_user'
-						print(f"Tenant set to: {membership.institution.name} (ID: {membership.institution.id})")
+						request.user_institution_id = membership.institution.id
 						# Establecer tenant en thread-local para TenantManager
 						set_current_tenant(membership.institution)
 					else:
 						# Usuario sin membership activa
 						request.tenant = None
 						request.user_type = 'tenant_user'
-						print(f"No active membership - tenant is None")
+						request.user_institution_id = None
 						set_current_tenant(None)
 			else:
 				# Usuario sin perfil (caso edge - no debería ocurrir con signals)
 				request.tenant = None
 				request.user_type = None
-				print(f"User has no profile")
+				request.user_institution_id = None
 				set_current_tenant(None)
-		else:
-			print(f"User not authenticated")
-		
-		print(f"Final tenant value: {request.tenant}")
-		print(f"Final user_type: {request.user_type}")
-		print("=== END DEBUG TenantMiddleware ===\n")
 		
 		try:
 			# Procesar request

@@ -1,7 +1,7 @@
 from django.core import mail
 from django.test import TestCase, override_settings
 
-from api.services.email_service import EmailInput, EmailService
+from api.utils.email_service import EmailInput, EmailService
 
 
 class EmailServiceTestCase(TestCase):

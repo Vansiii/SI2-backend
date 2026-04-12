@@ -7,7 +7,7 @@ Verifica que el middleware inyecta correctamente el tenant y user_type en el req
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 
-from api.middleware import TenantMiddleware
+from api.middleware.tenant_middleware import TenantMiddleware
 from api.models import FinancialInstitution, FinancialInstitutionMembership, UserProfile
 
 User = get_user_model()

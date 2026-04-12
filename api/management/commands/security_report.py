@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta
 from collections import Counter
-from api.models_audit import SecurityEvent, AuditLog
+from api.audit.models import SecurityEvent, AuditLog
 
 
 class Command(BaseCommand):
