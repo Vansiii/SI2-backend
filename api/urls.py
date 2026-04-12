@@ -20,4 +20,6 @@ urlpatterns = [
     path('products/', include('api.products.urls')),
     # Sprint 3: Gestión de solicitudes de crédito
     path('loans/', include('api.loans.urls')),
+    # Auditoría y seguridad (solo SaaS admin)
+    path('', include('api.audit.urls')),
 ]

@@ -87,6 +87,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'api.middleware.TenantMiddleware',  # Tenant context injection - DESPUÉS de AuthenticationMiddleware
     'api.middleware.RateLimitMiddleware',  # Rate limiting
+    'api.middleware.audit_middleware.AuditMiddleware',  # Auditoría automática de acciones
+    'api.middleware.audit_middleware.SecurityEventMiddleware',  # Eventos de seguridad
 ]
 
 ROOT_URLCONF = 'config.urls'
