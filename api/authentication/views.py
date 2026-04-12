@@ -4,6 +4,8 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 
 from .serializers import LoginSerializer
 
@@ -15,6 +17,57 @@ class LoginAPIView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        tags=['Autenticación'],
+        summary='Iniciar sesión',
+        description='''
+        Autentica un usuario con email y contraseña, retornando tokens JWT.
+        
+        Si el usuario tiene 2FA habilitado, retorna un challenge_token que debe
+        usarse en el endpoint de verificación 2FA.
+        ''',
+        request=LoginSerializer,
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+            401: OpenApiTypes.OBJECT,
+        },
+        examples=[
+            OpenApiExample(
+                'Login exitoso sin 2FA',
+                value={
+                    'access': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                    'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                    'user': {
+                        'id': 1,
+                        'email': 'usuario@ejemplo.com',
+                        'first_name': 'Juan',
+                        'last_name': 'Pérez'
+                    },
+                    'institution': {
+                        'id': 1,
+                        'name': 'Banco Ejemplo',
+                        'slug': 'banco-ejemplo'
+                    },
+                    'requires_2fa': False
+                },
+                response_only=True,
+                status_codes=['200'],
+            ),
+            OpenApiExample(
+                'Login requiere 2FA',
+                value={
+                    'requires_2fa': True,
+                    'challenge_token': 'temp_token_123',
+                    'expires_in': 300,
+                    'method': 'app',
+                    'message': 'Se requiere código de autenticación de dos factores.'
+                },
+                response_only=True,
+                status_codes=['200'],
+            ),
+        ],
+    )
     def post(self, request):
         """
         Autentica un usuario y retorna tokens JWT.
@@ -110,6 +163,35 @@ class LogoutAPIView(APIView):
     
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        tags=['Autenticación'],
+        summary='Cerrar sesión',
+        description='Cierra la sesión del usuario agregando el refresh token a la blacklist.',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'refresh': {
+                        'type': 'string',
+                        'description': 'Refresh token a invalidar'
+                    }
+                },
+                'required': ['refresh']
+            }
+        },
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+        },
+        examples=[
+            OpenApiExample(
+                'Logout exitoso',
+                value={'message': 'Sesión cerrada exitosamente.'},
+                response_only=True,
+                status_codes=['200'],
+            ),
+        ],
+    )
     def post(self, request):
         """
         Cierra la sesión del usuario agregando el refresh token a la blacklist.
@@ -271,6 +353,7 @@ class TwoFactorEnableAPIView(APIView):
         return Response({
             'secret': result.secret,
             'qr_code': f'data:image/png;base64,{result.qr_code_base64}',
+            'provisioning_uri': result.provisioning_uri,  # URL otpauth para móvil
             'backup_codes': result.backup_codes,
         }, status=status.HTTP_200_OK)
 
@@ -602,4 +685,217 @@ class EmailTwoFactorEnableAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         result = serializer.save()
         
+        return Response(result, status=status.HTTP_200_OK)
+
+# ============================================================
+# MOBILE PASSWORD RESET
+# ============================================================
+
+@method_decorator(ratelimit(key='ip', rate='5/5m', method='POST'), name='dispatch')
+class PasswordResetVerifyCodeAPIView(APIView):
+    """Vista para verificar código de recuperación móvil."""
+    
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=['Autenticación'],
+        summary='Verificar código de recuperación móvil',
+        description='''
+        Verifica un código de 6 dígitos enviado por email para recuperación de contraseña en móvil.
+        
+        Si el código es válido, retorna un token temporal que debe usarse para confirmar la nueva contraseña.
+        ''',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'email': {
+                        'type': 'string',
+                        'format': 'email',
+                        'description': 'Email del usuario'
+                    },
+                    'code': {
+                        'type': 'string',
+                        'minLength': 6,
+                        'maxLength': 6,
+                        'description': 'Código de 6 dígitos recibido por email'
+                    }
+                },
+                'required': ['email', 'code']
+            }
+        },
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+        },
+        examples=[
+            OpenApiExample(
+                'Código válido',
+                value={
+                    'valid': True,
+                    'message': 'Código verificado correctamente.',
+                    'reset_token': 'temp_token_for_password_reset'
+                },
+                response_only=True,
+                status_codes=['200'],
+            ),
+            OpenApiExample(
+                'Código inválido',
+                value={
+                    'valid': False,
+                    'message': 'Código inválido o expirado.'
+                },
+                response_only=True,
+                status_codes=['200'],
+            ),
+        ],
+    )
+    def post(self, request):
+        """
+        Verifica código de recuperación móvil.
+
+        Request body:
+            {
+                "email": "usuario@ejemplo.com",
+                "code": "123456"
+            }
+
+        Response (200 OK):
+            {
+                "valid": true,
+                "message": "Código verificado correctamente.",
+                "reset_token": "temp_token_for_password_reset"
+            }
+
+        Response (400 Bad Request):
+            {
+                "email": ["mensaje de error"],
+                "code": ["mensaje de error"]
+            }
+        """
+        from .serializers import PasswordResetVerifyCodeSerializer
+        
+        serializer = PasswordResetVerifyCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+
+        response_data = {
+            'valid': result.valid,
+            'message': result.message,
+        }
+        
+        if result.reset_token:
+            response_data['reset_token'] = result.reset_token
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
+
+# ============================================================
+# CHANGE PASSWORD
+# ============================================================
+
+from rest_framework.permissions import IsAuthenticated
+
+@method_decorator(ratelimit(key='user', rate='5/15m', method='POST'), name='dispatch')
+class ChangePasswordAPIView(APIView):
+    """Vista para cambiar contraseña de usuario autenticado."""
+    
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=['Autenticación'],
+        summary='Cambiar contraseña',
+        description='''
+        Permite a un usuario autenticado cambiar su contraseña.
+        
+        Requiere la contraseña actual para verificar la identidad del usuario.
+        ''',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'current_password': {
+                        'type': 'string',
+                        'description': 'Contraseña actual del usuario'
+                    },
+                    'new_password': {
+                        'type': 'string',
+                        'minLength': 8,
+                        'description': 'Nueva contraseña (mínimo 8 caracteres)'
+                    },
+                    'confirm_password': {
+                        'type': 'string',
+                        'description': 'Confirmación de la nueva contraseña'
+                    }
+                },
+                'required': ['current_password', 'new_password', 'confirm_password']
+            }
+        },
+        responses={
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+            401: OpenApiTypes.OBJECT,
+        },
+        examples=[
+            OpenApiExample(
+                'Cambio exitoso',
+                value={
+                    'message': 'Contraseña actualizada exitosamente.',
+                    'detail': 'Tu contraseña ha sido cambiada. Por seguridad, te recomendamos cerrar sesión en todos tus dispositivos.'
+                },
+                response_only=True,
+                status_codes=['200'],
+            ),
+            OpenApiExample(
+                'Contraseña actual incorrecta',
+                value={
+                    'current_password': ['La contraseña actual es incorrecta.']
+                },
+                response_only=True,
+                status_codes=['400'],
+            ),
+            OpenApiExample(
+                'Contraseñas no coinciden',
+                value={
+                    'confirm_password': ['Las contraseñas no coinciden.']
+                },
+                response_only=True,
+                status_codes=['400'],
+            ),
+        ],
+    )
+    def post(self, request):
+        """
+        Cambia la contraseña del usuario autenticado.
+
+        Request body:
+            {
+                "current_password": "contraseña_actual",
+                "new_password": "nueva_contraseña",
+                "confirm_password": "nueva_contraseña"
+            }
+
+        Response (200 OK):
+            {
+                "message": "Contraseña actualizada exitosamente.",
+                "detail": "Tu contraseña ha sido cambiada. Por seguridad, te recomendamos cerrar sesión en todos tus dispositivos."
+            }
+
+        Response (400 Bad Request):
+            {
+                "current_password": ["La contraseña actual es incorrecta."]
+            }
+        """
+        from .serializers import ChangePasswordSerializer
+        
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        
+        if not serializer.is_valid():
+            # Retornar errores de validación de forma más clara
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        result = serializer.save()
+
         return Response(result, status=status.HTTP_200_OK)

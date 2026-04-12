@@ -8,8 +8,10 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 
-from api.permissions import require_permission
+from api.core.permissions import require_permission
 
 from .serializers import (
     AssignRolesSerializer,
@@ -26,6 +28,16 @@ class UserListCreateAPIView(APIView):
 	
 	permission_classes = [IsAuthenticated, require_permission('users.view')]
 	
+	@extend_schema(
+		tags=['Usuarios'],
+		summary='Listar usuarios',
+		description='Lista usuarios de la institución. SaaS Admin puede ver todos los usuarios.',
+		responses={
+			200: UserSerializer(many=True),
+			401: OpenApiTypes.OBJECT,
+			403: OpenApiTypes.OBJECT,
+		}
+	)
 	def get(self, request):
 		"""
 		Lista usuarios filtrados por tenant.
@@ -72,6 +84,18 @@ class UserListCreateAPIView(APIView):
 		serializer = UserSerializer(users, many=True, context={'request': request})
 		return Response(serializer.data)
 	
+	@extend_schema(
+		tags=['Usuarios'],
+		summary='Crear usuario',
+		description='Crea un nuevo usuario en la institución.',
+		request=CreateUserSerializer,
+		responses={
+			201: UserSerializer,
+			400: OpenApiTypes.OBJECT,
+			401: OpenApiTypes.OBJECT,
+			403: OpenApiTypes.OBJECT,
+		}
+	)
 	def post(self, request):
 		"""
 		Crea un nuevo usuario.
@@ -268,7 +292,7 @@ class UserDetailAPIView(APIView):
 				)
 		
 		# Desactivar usuario usando el servicio
-		from api.services.user_management_service import UserManagementService
+		from api.users.services import UserManagementService
 		service = UserManagementService()
 		service.deactivate_user(user.id, request.user)
 		

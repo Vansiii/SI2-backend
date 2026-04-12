@@ -33,7 +33,7 @@ class EmailTwoFactorSendServiceTestCase(TestCase):
     @patch('api.services.email_service.EmailService')
     def test_send_code_success(self, mock_email_service):
         """Test enviar código exitosamente."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorSendInput,
             EmailTwoFactorSendService,
         )
@@ -68,7 +68,7 @@ class EmailTwoFactorSendServiceTestCase(TestCase):
     @patch('api.services.email_service.EmailService')
     def test_send_code_invalidates_previous(self, mock_email_service):
         """Test que enviar código invalida códigos anteriores."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorSendInput,
             EmailTwoFactorSendService,
         )
@@ -104,7 +104,7 @@ class EmailTwoFactorSendServiceTestCase(TestCase):
     @patch('api.services.email_service.EmailService')
     def test_send_code_email_failure(self, mock_email_service):
         """Test que fallo en envío de email invalida el código."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorSendInput,
             EmailTwoFactorSendService,
         )
@@ -132,7 +132,7 @@ class EmailTwoFactorSendServiceTestCase(TestCase):
     @patch('api.services.email_service.EmailService')
     def test_send_code_email_result_unsuccessful(self, mock_email_service):
         """Test que resultado success=False del email también falla e invalida el código."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorSendInput,
             EmailTwoFactorSendService,
         )
@@ -186,7 +186,7 @@ class EmailTwoFactorVerifyServiceTestCase(TestCase):
 
     def test_verify_valid_code(self):
         """Test verificar código válido."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorVerifyInput,
             EmailTwoFactorVerifyService,
         )
@@ -209,7 +209,7 @@ class EmailTwoFactorVerifyServiceTestCase(TestCase):
 
     def test_verify_invalid_code(self):
         """Test verificar código inválido."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorVerifyInput,
             EmailTwoFactorVerifyService,
         )
@@ -233,7 +233,7 @@ class EmailTwoFactorVerifyServiceTestCase(TestCase):
 
     def test_verify_expired_code(self):
         """Test verificar código expirado."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorVerifyInput,
             EmailTwoFactorVerifyService,
         )
@@ -257,7 +257,7 @@ class EmailTwoFactorVerifyServiceTestCase(TestCase):
 
     def test_verify_max_attempts_exceeded(self):
         """Test verificar con intentos máximos excedidos."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorVerifyInput,
             EmailTwoFactorVerifyService,
         )
@@ -281,7 +281,7 @@ class EmailTwoFactorVerifyServiceTestCase(TestCase):
 
     def test_verify_already_used_code(self):
         """Test verificar código ya usado."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorVerifyInput,
             EmailTwoFactorVerifyService,
         )
@@ -333,7 +333,7 @@ class EmailTwoFactorResendServiceTestCase(TestCase):
     @patch('api.services.email_service.EmailService')
     def test_resend_code_success(self, mock_email_service):
         """Test reenviar código exitosamente."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorResendInput,
             EmailTwoFactorResendService,
         )
@@ -367,7 +367,7 @@ class EmailTwoFactorResendServiceTestCase(TestCase):
 
     def test_resend_invalid_token(self):
         """Test reenviar con token inválido."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorResendInput,
             EmailTwoFactorResendService,
         )

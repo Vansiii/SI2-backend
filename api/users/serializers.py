@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from api.models import UserProfile, UserRole
-from api.services.user_management_service import (
+from api.users.services import (
     CreateUserInput,
     UpdateUserInput,
     UserManagementService,

@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
+    ChangePasswordAPIView,
     EmailTwoFactorEnableAPIView,
     EmailTwoFactorResendAPIView,
     LoginAPIView,
@@ -9,6 +10,7 @@ from .views import (
     PasswordResetConfirmAPIView,
     PasswordResetRequestAPIView,
     PasswordResetValidateAPIView,
+    PasswordResetVerifyCodeAPIView,  # Nueva vista
     TwoFactorDisableAPIView,
     TwoFactorEnableAPIView,
     TwoFactorGetMethodAPIView,
@@ -18,6 +20,7 @@ from .views import (
     TwoFactorStatusAPIView,
     TwoFactorVerifyAPIView,
 )
+from .profile_views import ProfileAPIView, ProfileUpdateAPIView
 
 urlpatterns = [
     # ============================================================
@@ -44,6 +47,11 @@ urlpatterns = [
     path('auth/password-reset/confirm/', PasswordResetConfirmAPIView.as_view(), name='password-reset-confirm'),
     
     # ============================================================
+    # MOBILE PASSWORD RESET
+    # ============================================================
+    path('auth/password-reset/verify-code/', PasswordResetVerifyCodeAPIView.as_view(), name='password-reset-verify-code'),
+    
+    # ============================================================
     # TWO-FACTOR AUTHENTICATION (2FA)
     # ============================================================
     path('auth/2fa/enable/', TwoFactorEnableAPIView.as_view(), name='2fa-enable'),
@@ -59,4 +67,15 @@ urlpatterns = [
     path('auth/2fa/email/resend/', EmailTwoFactorResendAPIView.as_view(), name='2fa-email-resend'),
     path('auth/2fa/method/set/', TwoFactorSetMethodAPIView.as_view(), name='2fa-set-method'),
     path('auth/2fa/method/', TwoFactorGetMethodAPIView.as_view(), name='2fa-get-method'),
+    
+    # ============================================================
+    # CHANGE PASSWORD
+    # ============================================================
+    path('auth/change-password/', ChangePasswordAPIView.as_view(), name='change-password'),
+    
+    # ============================================================
+    # PROFILE
+    # ============================================================
+    path('auth/profile/', ProfileAPIView.as_view(), name='profile'),
+    path('auth/profile/update/', ProfileUpdateAPIView.as_view(), name='profile-update'),
 ]

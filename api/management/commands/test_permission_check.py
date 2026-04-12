@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory
 from api.models import FinancialInstitution
-from api.permissions import HasPermission
+from api.core.permissions import HasPermission
 
 User = get_user_model()
 

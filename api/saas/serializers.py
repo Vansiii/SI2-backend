@@ -1,240 +1,387 @@
 """
-Serializers para el panel de administración SaaS.
-
-Estos serializers son usados por los endpoints de gestión de tenants
-disponibles solo para superadmins SaaS.
+Serializers para gestión de suscripciones SaaS.
 """
 
 from rest_framework import serializers
-from api.models import FinancialInstitution, Role, UserRole
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
+from .models import SubscriptionPlan, Subscription
+from api.tenants.models import FinancialInstitution
 
 
-class InstitutionListSerializer(serializers.ModelSerializer):
-    """Serializer para lista de instituciones."""
+class SubscriptionPlanSerializer(serializers.ModelSerializer):
+    """Serializer completo para planes de suscripción."""
     
-    users_count = serializers.SerializerMethodField()
-    roles_count = serializers.SerializerMethodField()
-    active_users_count = serializers.SerializerMethodField()
+    price_per_month = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+        source='get_price_per_month'
+    )
+    
+    billing_cycle_display = serializers.CharField(
+        source='get_billing_cycle_display',
+        read_only=True
+    )
     
     class Meta:
-        model = FinancialInstitution
+        model = SubscriptionPlan
         fields = [
             'id',
             'name',
             'slug',
-            'institution_type',
+            'description',
+            'price',
+            'price_per_month',
+            'billing_cycle',
+            'billing_cycle_display',
+            'trial_days',
+            'setup_fee',
+            'max_users',
+            'max_branches',
+            'max_products',
+            'max_loans_per_month',
+            'max_storage_gb',
+            'has_ai_scoring',
+            'has_workflows',
+            'has_reporting',
+            'has_mobile_app',
+            'has_api_access',
+            'has_white_label',
+            'has_priority_support',
+            'has_custom_integrations',
             'is_active',
-            'created_at',
-            'users_count',
-            'roles_count',
-            'active_users_count',
-        ]
-    
-    def get_users_count(self, obj):
-        """Cuenta total de usuarios de la institución."""
-        return obj.memberships.filter(is_active=True).count()
-    
-    def get_roles_count(self, obj):
-        """Cuenta total de roles de la institución."""
-        return Role.all_objects.filter(institution=obj).count()
-    
-    def get_active_users_count(self, obj):
-        """Cuenta de usuarios activos con roles asignados."""
-        return UserRole.objects.filter(
-            institution=obj,
-            is_active=True
-        ).values('user').distinct().count()
-
-
-class InstitutionDetailSerializer(serializers.ModelSerializer):
-    """Serializer detallado para una institución."""
-    
-    created_by = serializers.SerializerMethodField()
-    stats = serializers.SerializerMethodField()
-    recent_users = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = FinancialInstitution
-        fields = [
-            'id',
-            'name',
-            'slug',
-            'institution_type',
-            'is_active',
+            'is_featured',
+            'display_order',
+            'features_list',
             'created_at',
             'updated_at',
-            'created_by',
-            'stats',
-            'recent_users',
-        ]
-    
-    def get_created_by(self, obj):
-        """Información del usuario que creó la institución."""
-        if obj.created_by:
-            return {
-                'id': obj.created_by.id,
-                'email': obj.created_by.email,
-                'full_name': f'{obj.created_by.first_name} {obj.created_by.last_name}',
-            }
-        return None
-    
-    def get_stats(self, obj):
-        """Estadísticas de la institución."""
-        # Total de usuarios
-        total_users = obj.memberships.filter(is_active=True).count()
-        
-        # Usuarios con roles asignados
-        users_with_roles = UserRole.objects.filter(
-            institution=obj,
-            is_active=True
-        ).values('user').distinct().count()
-        
-        # Total de roles
-        total_roles = Role.all_objects.filter(institution=obj).count()
-        
-        # Roles activos
-        active_roles = Role.all_objects.filter(
-            institution=obj,
-            is_active=True
-        ).count()
-        
-        return {
-            'total_users': total_users,
-            'users_with_roles': users_with_roles,
-            'users_without_roles': total_users - users_with_roles,
-            'total_roles': total_roles,
-            'active_roles': active_roles,
-            'inactive_roles': total_roles - active_roles,
-        }
-    
-    def get_recent_users(self, obj):
-        """Últimos 5 usuarios registrados."""
-        recent_memberships = obj.memberships.filter(
-            is_active=True
-        ).select_related('user').order_by('-created_at')[:5]
-        
-        return [
-            {
-                'id': m.user.id,
-                'email': m.user.email,
-                'full_name': f'{m.user.first_name} {m.user.last_name}',
-                'joined_at': m.created_at,
-            }
-            for m in recent_memberships
-        ]
-
-
-class TenantStatsSerializer(serializers.Serializer):
-    """Serializer para estadísticas globales de tenants."""
-    
-    total_institutions = serializers.IntegerField()
-    active_institutions = serializers.IntegerField()
-    inactive_institutions = serializers.IntegerField()
-    total_users = serializers.IntegerField()
-    total_roles = serializers.IntegerField()
-    institutions_by_type = serializers.DictField()
-
-
-
-# ============================================================
-# SPRINT 8: Gestión de Permisos y Vistas Multi-Tenant
-# ============================================================
-
-from api.models import Permission
-
-
-class PermissionSerializer(serializers.ModelSerializer):
-    """Serializer para permisos globales."""
-    
-    assigned_roles_count = serializers.SerializerMethodField()
-    module = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Permission
-        fields = [
-            'id', 'code', 'name', 'description', 'module', 'is_active',
-            'created_at', 'updated_at', 'assigned_roles_count'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
-    
-    def get_assigned_roles_count(self, obj):
-        """Cuenta cuántos roles tienen este permiso."""
-        return obj.roles.filter(is_active=True).count()
-    
-    def get_module(self, obj):
-        """Extrae el módulo del código del permiso (ej: 'users.view' -> 'users')."""
-        if '.' in obj.code:
-            return obj.code.split('.')[0]
-        return 'general'
 
 
-class SaaSUserListSerializer(serializers.ModelSerializer):
-    """Serializer para listar usuarios en panel SaaS."""
+class SubscriptionPlanListSerializer(serializers.ModelSerializer):
+    """Serializer simplificado para lista de planes."""
     
-    institution_name = serializers.SerializerMethodField()
-    institution_slug = serializers.SerializerMethodField()
-    roles_count = serializers.SerializerMethodField()
-    user_type = serializers.SerializerMethodField()
-    full_name = serializers.SerializerMethodField()
+    price_per_month = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+        source='get_price_per_month'
+    )
+    
+    billing_cycle_display = serializers.CharField(
+        source='get_billing_cycle_display',
+        read_only=True
+    )
     
     class Meta:
-        model = User
+        model = SubscriptionPlan
         fields = [
-            'id', 'email', 'first_name', 'last_name', 'full_name',
-            'is_active', 'date_joined', 'last_login',
-            'institution_name', 'institution_slug',
-            'roles_count', 'user_type'
+            'id',
+            'name',
+            'slug',
+            'description',
+            'price',
+            'price_per_month',
+            'billing_cycle',
+            'billing_cycle_display',
+            'trial_days',
+            'is_active',
+            'is_featured',
+            'display_order',
         ]
-    
-    def get_full_name(self, obj):
-        """Obtiene el nombre completo del usuario."""
-        return f'{obj.first_name} {obj.last_name}'.strip()
-    
-    def get_institution_name(self, obj):
-        """Obtiene el nombre de la institución principal del usuario."""
-        membership = obj.institution_memberships.filter(is_active=True).first()
-        return membership.institution.name if membership else None
-    
-    def get_institution_slug(self, obj):
-        """Obtiene el slug de la institución principal del usuario."""
-        membership = obj.institution_memberships.filter(is_active=True).first()
-        return membership.institution.slug if membership else None
-    
-    def get_roles_count(self, obj):
-        """Cuenta los roles activos del usuario."""
-        return obj.user_roles.filter(is_active=True).count()
-    
-    def get_user_type(self, obj):
-        """Obtiene el tipo de usuario."""
-        if hasattr(obj, 'profile'):
-            return obj.profile.user_type
-        return None
 
 
-class SaaSRoleListSerializer(serializers.ModelSerializer):
-    """Serializer para listar roles en panel SaaS."""
-    
-    institution_name = serializers.CharField(source='institution.name', read_only=True)
-    institution_slug = serializers.CharField(source='institution.slug', read_only=True)
-    permissions_count = serializers.SerializerMethodField()
-    users_count = serializers.SerializerMethodField()
+class CreateSubscriptionPlanSerializer(serializers.ModelSerializer):
+    """Serializer para crear planes de suscripción."""
     
     class Meta:
-        model = Role
+        model = SubscriptionPlan
         fields = [
-            'id', 'name', 'description', 'is_active',
-            'institution_name', 'institution_slug',
-            'permissions_count', 'users_count',
-            'created_at', 'updated_at'
+            'name',
+            'slug',
+            'description',
+            'price',
+            'billing_cycle',
+            'trial_days',
+            'setup_fee',
+            'max_users',
+            'max_branches',
+            'max_products',
+            'max_loans_per_month',
+            'max_storage_gb',
+            'has_ai_scoring',
+            'has_workflows',
+            'has_reporting',
+            'has_mobile_app',
+            'has_api_access',
+            'has_white_label',
+            'has_priority_support',
+            'has_custom_integrations',
+            'is_active',
+            'is_featured',
+            'display_order',
+            'features_list',
         ]
     
-    def get_permissions_count(self, obj):
-        """Cuenta los permisos del rol."""
-        return obj.permissions.filter(is_active=True).count()
+    def validate_price(self, value):
+        """Valida que el precio sea positivo."""
+        if value < 0:
+            raise serializers.ValidationError("El precio debe ser mayor o igual a 0")
+        return value
     
-    def get_users_count(self, obj):
-        """Cuenta los usuarios con este rol."""
-        return obj.user_assignments.filter(is_active=True).count()
+    def validate_slug(self, value):
+        """Valida que el slug sea único."""
+        if SubscriptionPlan.objects.filter(slug=value).exists():
+            raise serializers.ValidationError("Ya existe un plan con este slug")
+        return value
+
+
+class UpdateSubscriptionPlanSerializer(serializers.ModelSerializer):
+    """Serializer para actualizar planes de suscripción."""
+    
+    class Meta:
+        model = SubscriptionPlan
+        fields = [
+            'name',
+            'description',
+            'price',
+            'billing_cycle',
+            'trial_days',
+            'setup_fee',
+            'max_users',
+            'max_branches',
+            'max_products',
+            'max_loans_per_month',
+            'max_storage_gb',
+            'has_ai_scoring',
+            'has_workflows',
+            'has_reporting',
+            'has_mobile_app',
+            'has_api_access',
+            'has_white_label',
+            'has_priority_support',
+            'has_custom_integrations',
+            'is_active',
+            'is_featured',
+            'display_order',
+            'features_list',
+        ]
+    
+    def validate_price(self, value):
+        """Valida que el precio sea positivo."""
+        if value < 0:
+            raise serializers.ValidationError("El precio debe ser mayor o igual a 0")
+        return value
+
+
+class InstitutionBasicSerializer(serializers.ModelSerializer):
+    """Serializer básico para institución en suscripciones."""
+    
+    class Meta:
+        model = FinancialInstitution
+        fields = ['id', 'name', 'slug']
+
+
+class SubscriptionSerializer(serializers.ModelSerializer):
+    """Serializer completo para suscripciones."""
+    
+    # Objetos completos para compatibilidad con frontend
+    institution = InstitutionBasicSerializer(read_only=True)
+    plan = SubscriptionPlanSerializer(read_only=True)
+    
+    status_display = serializers.CharField(
+        source='get_status_display',
+        read_only=True
+    )
+    
+    payment_status_display = serializers.CharField(
+        source='get_payment_status_display',
+        read_only=True
+    )
+    
+    usage_percentage = serializers.SerializerMethodField()
+    is_within_limits = serializers.BooleanField(read_only=True)
+    is_trial = serializers.SerializerMethodField()
+    days_until_renewal = serializers.IntegerField(read_only=True)
+    
+    # Campos adicionales para compatibilidad
+    current_loans_this_month = serializers.IntegerField(
+        source='current_month_loans',
+        read_only=True
+    )
+    
+    class Meta:
+        model = Subscription
+        fields = [
+            'id',
+            'institution',
+            'plan',
+            'status',
+            'status_display',
+            'start_date',
+            'end_date',
+            'trial_end_date',
+            'next_billing_date',
+            'last_billing_date',
+            'payment_status',
+            'payment_status_display',
+            'amount_due',
+            'total_paid',
+            'current_users',
+            'current_branches',
+            'current_products',
+            'current_month_loans',
+            'current_loans_this_month',
+            'current_storage_gb',
+            'usage_percentage',
+            'is_within_limits',
+            'is_trial',
+            'days_until_renewal',
+            'cancellation_reason',
+            'notes',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'total_paid',
+        ]
+    
+    def get_usage_percentage(self, obj):
+        """Obtiene el porcentaje de uso de los límites."""
+        return obj.get_usage_percentage()
+    
+    def get_is_trial(self, obj):
+        """Verifica si está en período de prueba."""
+        return obj.is_trial()
+
+
+class SubscriptionListSerializer(serializers.ModelSerializer):
+    """Serializer simplificado para lista de suscripciones."""
+    
+    institution_name = serializers.CharField(
+        source='institution.name',
+        read_only=True
+    )
+    
+    plan_name = serializers.CharField(
+        source='plan.name',
+        read_only=True
+    )
+    
+    status_display = serializers.CharField(
+        source='get_status_display',
+        read_only=True
+    )
+    
+    payment_status_display = serializers.CharField(
+        source='get_payment_status_display',
+        read_only=True
+    )
+    
+    class Meta:
+        model = Subscription
+        fields = [
+            'id',
+            'institution',
+            'institution_name',
+            'plan',
+            'plan_name',
+            'status',
+            'status_display',
+            'payment_status',
+            'payment_status_display',
+            'start_date',
+            'next_billing_date',
+            'amount_due',
+            'created_at',
+        ]
+
+
+class CreateSubscriptionSerializer(serializers.ModelSerializer):
+    """Serializer para crear suscripciones."""
+    
+    class Meta:
+        model = Subscription
+        fields = [
+            'institution',
+            'plan',
+            'start_date',
+        ]
+    
+    def validate_institution(self, value):
+        """Valida que la institución no tenga ya una suscripción activa."""
+        if Subscription.objects.filter(
+            institution=value,
+            status__in=['TRIAL', 'ACTIVE']
+        ).exists():
+            raise serializers.ValidationError(
+                "Esta institución ya tiene una suscripción activa"
+            )
+        return value
+    
+    def create(self, validated_data):
+        """Crea la suscripción y activa el período de prueba."""
+        subscription = Subscription.objects.create(**validated_data)
+        subscription.activate_trial()
+        return subscription
+
+
+class UpdateSubscriptionSerializer(serializers.ModelSerializer):
+    """Serializer para actualizar suscripciones."""
+    
+    class Meta:
+        model = Subscription
+        fields = [
+            'plan',
+            'status',
+            'payment_status',
+            'amount_due',
+            'current_users',
+            'current_branches',
+            'current_products',
+            'current_month_loans',
+            'current_storage_gb',
+            'notes',
+        ]
+
+
+class ActivateSubscriptionSerializer(serializers.Serializer):
+    """Serializer para activar una suscripción después del trial."""
+    
+    payment_method = serializers.CharField(
+        max_length=50,
+        required=False,
+        help_text='Método de pago utilizado'
+    )
+    
+    transaction_id = serializers.CharField(
+        max_length=100,
+        required=False,
+        help_text='ID de transacción del pago'
+    )
+
+
+class SuspendSubscriptionSerializer(serializers.Serializer):
+    """Serializer para suspender una suscripción."""
+    
+    reason = serializers.CharField(
+        required=True,
+        help_text='Motivo de la suspensión'
+    )
+
+
+class CancelSubscriptionSerializer(serializers.Serializer):
+    """Serializer para cancelar una suscripción."""
+    
+    reason = serializers.CharField(
+        required=True,
+        help_text='Motivo de la cancelación'
+    )
+    
+    immediate = serializers.BooleanField(
+        default=False,
+        help_text='Cancelar inmediatamente o al final del período'
+    )

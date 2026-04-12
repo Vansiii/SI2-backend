@@ -13,7 +13,7 @@ from api.models import (
     Permission,
     UserProfile
 )
-from api.services.registration_service import RegisterUserInput, RegisterUserService
+from api.registration.services import RegisterUserInput, RegisterUserService
 
 User = get_user_model()
 

@@ -5,7 +5,7 @@ Middleware para auditoría automática de requests.
 import json
 import time
 from django.utils.deprecation import MiddlewareMixin
-from api.services.audit_service import AuditService, SecurityEventService
+from api.audit.services import AuditService, SecurityEventService
 
 
 class AuditMiddleware(MiddlewareMixin):

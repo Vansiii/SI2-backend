@@ -3,7 +3,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from api.models import FinancialInstitution
-from api.services.registration_service import RegisterUserInput, RegisterUserService
+from api.registration.services import RegisterUserInput, RegisterUserService
 
 
 class RegisterUserSerializer(serializers.Serializer):

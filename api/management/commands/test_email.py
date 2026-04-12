@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 
-from api.services.email_service import EmailInput, EmailService
+from api.utils.email_service import EmailInput, EmailService
 
 
 class Command(BaseCommand):

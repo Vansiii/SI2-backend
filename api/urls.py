@@ -1,7 +1,7 @@
 from django.urls import include, path
 
 from .views import health_check
-from .debug_views import DebugPermissionsView
+from .utils.debug_views import DebugPermissionsView
 
 urlpatterns = [
     path('health/', health_check, name='health-check'),
@@ -14,4 +14,10 @@ urlpatterns = [
     path('users/', include('api.users.urls')),
     # Sprint 6: Panel de administración SaaS
     path('saas/', include('api.saas.urls')),
+    # Sprint 1: Gestión de clientes/prestatarios
+    path('clients/', include('api.clients.urls')),
+    # Sprint 2: Gestión de productos crediticios
+    path('products/', include('api.products.urls')),
+    # Sprint 3: Gestión de solicitudes de crédito
+    path('loans/', include('api.loans.urls')),
 ]

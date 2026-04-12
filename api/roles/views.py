@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.models import Permission, Role
-from api.permissions import require_permission
+from api.core.permissions import require_permission
 
 from .serializers import (
     PermissionSerializer,

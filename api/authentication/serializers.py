@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from api.services.auth_service import LoginInput, LoginService
+from api.authentication.services import LoginInput, LoginService
 
 
 # ============================================================
@@ -75,30 +75,36 @@ class LogoutSerializer(serializers.Serializer):
     """Serializer para logout de usuario."""
     
     refresh = serializers.CharField(
-        required=True,
+        required=False,  # Hacer opcional para compatibilidad con móvil
+        allow_blank=True,
         error_messages={
-            'required': 'El token de actualización es obligatorio.',
             'blank': 'El token de actualización no puede estar vacío.',
         }
     )
 
     def validate_refresh(self, value):
-        """Validar que el token no esté vacío."""
-        if not value or not value.strip():
+        """Validar que el token no esté vacío si se proporciona."""
+        if value and not value.strip():
             raise serializers.ValidationError('El token de actualización no puede estar vacío.')
-        return value.strip()
+        return value.strip() if value else None
 
     def save(self):
-        """Agregar el refresh token a la blacklist."""
-        try:
-            token = RefreshToken(self.validated_data['refresh'])
-            token.blacklist()
+        """Agregar el refresh token a la blacklist si se proporciona."""
+        refresh_token = self.validated_data.get('refresh')
+        
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+                return {'message': 'Sesión cerrada exitosamente.'}
+            except Exception as e:
+                # Si el token es inválido, igual consideramos el logout exitoso
+                # porque el objetivo es cerrar la sesión del cliente
+                return {'message': 'Sesión cerrada exitosamente.'}
+        else:
+            # Si no se proporciona token, igual retornamos éxito
+            # El cliente limpiará sus tokens localmente
             return {'message': 'Sesión cerrada exitosamente.'}
-        except Exception as e:
-            raise serializers.ValidationError(
-                {'detail': 'Token inválido o ya ha sido revocado.'},
-                code='invalid_token'
-            )
 
 
 # ============================================================
@@ -117,6 +123,12 @@ class PasswordResetRequestSerializer(serializers.Serializer):
             'blank': 'El correo electrónico no puede estar vacío.',
         }
     )
+    platform = serializers.ChoiceField(
+        choices=['web', 'mobile'],
+        default='web',
+        required=False,
+        help_text='Plataforma desde donde se solicita: web (enlace) o mobile (código)'
+    )
 
     def validate_email(self, value):
         """Normalizar email."""
@@ -127,7 +139,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         """Ejecutar el servicio de solicitud de recuperación."""
-        from api.services.password_reset_service import (
+        from api.authentication.password_reset_service import (
             PasswordResetRequestInput,
             PasswordResetRequestService,
         )
@@ -146,6 +158,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
             email=validated_data['email'],
             ip_address=ip_address,
             user_agent=user_agent,
+            platform=validated_data.get('platform', 'web'),  # Nuevo campo
         )
 
         # Ejecutar servicio
@@ -172,7 +185,7 @@ class PasswordResetValidateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         """Validar el token con el servicio."""
-        from api.services.password_reset_service import (
+        from api.authentication.password_reset_service import (
             PasswordResetValidateInput,
             PasswordResetValidateService,
         )
@@ -238,7 +251,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         """Ejecutar el servicio de confirmación de contraseña."""
-        from api.services.password_reset_service import (
+        from api.authentication.password_reset_service import (
             PasswordResetConfirmInput,
             PasswordResetConfirmService,
         )
@@ -295,7 +308,7 @@ class TwoFactorEnableSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         """Ejecutar el servicio de habilitación de 2FA."""
-        from api.services.two_factor_service import (
+        from api.authentication.two_factor_service import (
             TwoFactorEnableInput,
             TwoFactorEnableService,
         )
@@ -335,7 +348,7 @@ class TwoFactorVerifySerializer(serializers.Serializer):
 
     def create(self, validated_data):
         """Ejecutar el servicio de verificación de 2FA."""
-        from api.services.two_factor_service import (
+        from api.authentication.two_factor_service import (
             TwoFactorVerifyInput,
             TwoFactorVerifyService,
         )
@@ -376,7 +389,7 @@ class TwoFactorDisableSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         """Ejecutar el servicio de deshabilitación de 2FA."""
-        from api.services.two_factor_service import (
+        from api.authentication.two_factor_service import (
             TwoFactorDisableInput,
             TwoFactorDisableService,
         )
@@ -449,7 +462,7 @@ class TwoFactorLoginVerifySerializer(serializers.Serializer):
 
     def create(self, validated_data):
         """Ejecutar el servicio de login con 2FA."""
-        from api.services.auth_service import (
+        from api.authentication.services import (
             TwoFactorLoginInput,
             TwoFactorLoginService,
         )
@@ -499,7 +512,7 @@ class TwoFactorRegenerateBackupCodesSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         """Ejecutar el servicio de regeneración de códigos."""
-        from api.services.two_factor_service import (
+        from api.authentication.two_factor_service import (
             TwoFactorRegenerateBackupCodesInput,
             TwoFactorRegenerateBackupCodesService,
         )
@@ -542,7 +555,7 @@ class EmailTwoFactorResendSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         """Ejecutar el servicio de reenvío de código."""
-        from api.services.email_two_factor_service import (
+        from api.authentication.email_two_factor_service import (
             EmailTwoFactorResendInput,
             EmailTwoFactorResendService,
         )
@@ -638,7 +651,6 @@ class TwoFactorSetMethodSerializer(serializers.Serializer):
         }
 
 
-
 class EmailTwoFactorEnableSerializer(serializers.Serializer):
     """Serializer para habilitar 2FA directamente con email."""
     
@@ -704,4 +716,163 @@ class EmailTwoFactorEnableSerializer(serializers.Serializer):
         return {
             'method': 'email',
             'message': 'Autenticación de dos factores habilitada con método email.'
+        }
+
+
+# ============================================================
+# MOBILE PASSWORD RESET
+# ============================================================
+
+class PasswordResetVerifyCodeSerializer(serializers.Serializer):
+    """Serializer para verificar código de recuperación móvil."""
+    
+    email = serializers.EmailField(
+        max_length=254,
+        required=True,
+        error_messages={
+            'required': 'El correo electrónico es obligatorio.',
+            'invalid': 'Ingresa un correo electrónico válido.',
+            'blank': 'El correo electrónico no puede estar vacío.',
+        }
+    )
+    code = serializers.CharField(
+        min_length=6,
+        max_length=6,
+        required=True,
+        error_messages={
+            'required': 'El código es obligatorio.',
+            'blank': 'El código no puede estar vacío.',
+            'min_length': 'El código debe tener 6 dígitos.',
+            'max_length': 'El código debe tener 6 dígitos.',
+        }
+    )
+
+    def validate_email(self, value):
+        """Normalizar email."""
+        normalized = value.strip().lower()
+        if not normalized:
+            raise serializers.ValidationError('El correo electrónico no puede estar vacío.')
+        return normalized
+
+    def validate_code(self, value):
+        """Validar que el código sea numérico."""
+        if not value.isdigit():
+            raise serializers.ValidationError('El código debe contener solo números.')
+        return value
+
+    def create(self, validated_data):
+        """Ejecutar el servicio de verificación de código."""
+        from api.authentication.password_reset_service import (
+            PasswordResetVerifyCodeInput,
+            PasswordResetVerifyCodeService,
+        )
+        
+        verify_input = PasswordResetVerifyCodeInput(
+            email=validated_data['email'],
+            code=validated_data['code'],
+        )
+
+        service = PasswordResetVerifyCodeService()
+        return service.execute(verify_input)
+
+
+
+# ============================================================
+# CHANGE PASSWORD
+# ============================================================
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """Serializer para cambiar contraseña de usuario autenticado."""
+    
+    current_password = serializers.CharField(
+        write_only=True,
+        required=True,
+        trim_whitespace=False,
+        error_messages={
+            'required': 'La contraseña actual es obligatoria.',
+            'blank': 'La contraseña actual no puede estar vacía.',
+        }
+    )
+    new_password = serializers.CharField(
+        write_only=True,
+        required=True,
+        min_length=8,
+        trim_whitespace=False,
+        error_messages={
+            'required': 'La nueva contraseña es obligatoria.',
+            'blank': 'La nueva contraseña no puede estar vacía.',
+            'min_length': 'La nueva contraseña debe tener al menos 8 caracteres.',
+        }
+    )
+    confirm_password = serializers.CharField(
+        write_only=True,
+        required=True,
+        trim_whitespace=False,
+        error_messages={
+            'required': 'La confirmación de contraseña es obligatoria.',
+            'blank': 'La confirmación de contraseña no puede estar vacía.',
+        }
+    )
+
+    def validate_current_password(self, value):
+        """Validar que la contraseña actual no esté vacía."""
+        if not value:
+            raise serializers.ValidationError('La contraseña actual no puede estar vacía.')
+        return value
+
+    def validate_new_password(self, value):
+        """Validar que la nueva contraseña no esté vacía y cumpla requisitos."""
+        if not value:
+            raise serializers.ValidationError('La nueva contraseña no puede estar vacía.')
+        
+        # Validar longitud mínima
+        if len(value) < 8:
+            raise serializers.ValidationError('La nueva contraseña debe tener al menos 8 caracteres.')
+        
+        return value
+
+    def validate(self, attrs):
+        """Validar que las contraseñas coincidan y que la actual sea correcta."""
+        from django.contrib.auth import authenticate
+        
+        request = self.context.get('request')
+        user = request.user
+        
+        # Verificar que la nueva contraseña y la confirmación coincidan
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({
+                'confirm_password': 'Las contraseñas no coinciden.'
+            })
+        
+        # Verificar que la nueva contraseña sea diferente a la actual
+        if attrs['current_password'] == attrs['new_password']:
+            raise serializers.ValidationError({
+                'new_password': 'La nueva contraseña debe ser diferente a la actual.'
+            })
+        
+        # Verificar contraseña actual
+        authenticated_user = authenticate(
+            username=user.username,
+            password=attrs['current_password']
+        )
+        
+        if authenticated_user is None:
+            raise serializers.ValidationError({
+                'current_password': 'La contraseña actual es incorrecta.'
+            })
+        
+        return attrs
+
+    def save(self):
+        """Cambiar la contraseña del usuario."""
+        request = self.context.get('request')
+        user = request.user
+        
+        # Cambiar contraseña
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        
+        return {
+            'message': 'Contraseña actualizada exitosamente.',
+            'detail': 'Tu contraseña ha sido cambiada. Por seguridad, te recomendamos cerrar sesión en todos tus dispositivos.'
         }
