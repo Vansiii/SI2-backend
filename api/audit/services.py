@@ -71,12 +71,12 @@ class AuditService:
     def log_login(user: User, request: HttpRequest, success: bool = True):
         """Registra un intento de login."""
         severity = 'info' if success else 'warning'
-        action = 'login' if success else 'security_event'
+        action = 'login_success' if success else 'login_failed'
         description = f"Login {'exitoso' if success else 'fallido'} para {user.email}"
         
         return AuditService.log_action(
             action=action,
-            resource_type='User',
+            resource_type='Authentication',
             resource_id=user.id,
             description=description,
             user=user if success else None,
@@ -89,11 +89,24 @@ class AuditService:
         """Registra un logout."""
         return AuditService.log_action(
             action='logout',
-            resource_type='User',
+            resource_type='Authentication',
             resource_id=user.id,
             description=f"Logout de {user.email}",
             user=user,
             request=request
+        )
+    
+    @staticmethod
+    def log_register(user: User, request: HttpRequest, institution_name: str):
+        """Registra un registro exitoso."""
+        return AuditService.log_action(
+            action='register',
+            resource_type='Registration',
+            resource_id=user.id,
+            description=f"Registro exitoso de {user.email} para institución {institution_name}",
+            user=user,
+            request=request,
+            metadata={'institution_name': institution_name}
         )
     
     @staticmethod

@@ -14,16 +14,41 @@ class AuditLog(models.Model):
     """
     
     ACTION_TYPES = [
-        ('login', 'Login'),
+        # Autenticación
+        ('login_success', 'Login Exitoso'),
+        ('login_failed', 'Login Fallido'),
         ('logout', 'Logout'),
-        ('create', 'Create'),
-        ('update', 'Update'),
-        ('delete', 'Delete'),
-        ('view', 'View'),
-        ('permission_change', 'Permission Change'),
-        ('role_assign', 'Role Assignment'),
-        ('tenant_switch', 'Tenant Switch'),
-        ('security_event', 'Security Event'),
+        ('register', 'Registro'),
+        ('password_reset_request', 'Solicitud Reset Password'),
+        
+        # Operaciones CRUD
+        ('create', 'Crear'),
+        ('update_full', 'Actualización Completa'),
+        ('update_partial', 'Actualización Parcial'),
+        ('delete', 'Eliminar'),
+        ('view', 'Ver Detalle'),
+        ('list', 'Listar'),
+        
+        # Operaciones HTTP específicas
+        ('check_exists', 'Verificar Existencia'),
+        ('options_request', 'Consulta de Opciones'),
+        
+        # Operaciones de permisos y roles
+        ('permission_change', 'Cambio de Permisos'),
+        ('role_assign', 'Asignación de Rol'),
+        ('role_remove', 'Remoción de Rol'),
+        
+        # Operaciones de sistema
+        ('tenant_switch', 'Cambio de Tenant'),
+        ('security_event', 'Evento de Seguridad'),
+        ('system_action', 'Acción del Sistema'),
+        
+        # Operaciones específicas del negocio
+        ('loan_approve', 'Aprobación de Préstamo'),
+        ('loan_reject', 'Rechazo de Préstamo'),
+        ('client_activate', 'Activación de Cliente'),
+        ('client_deactivate', 'Desactivación de Cliente'),
+        ('subscription_change', 'Cambio de Suscripción'),
     ]
     
     SEVERITY_LEVELS = [
