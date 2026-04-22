@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'api.saas',
     'api.audit',
     'api.clients',  # Gestión de clientes/prestatarios
+    'api.branches',  # Gestión de sucursales
     'api.products',  # Gestión de productos crediticios
     'api.loans',  # Gestión de solicitudes de crédito
 ]

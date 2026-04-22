@@ -64,6 +64,13 @@ from api.clients.models import (
 )
 
 # ============================================================
+# MODELOS DE SUCURSALES
+# ============================================================
+from api.branches.models import (
+    Branch,
+)
+
+# ============================================================
 # MODELOS DE PRODUCTOS CREDITICIOS
 # ============================================================
 from api.products.models import (
@@ -118,6 +125,8 @@ __all__ = [
     # Clients
     'Client',
     'ClientDocument',
+    # Branches
+    'Branch',
     # SaaS
     'SubscriptionPlan',
     'Subscription',

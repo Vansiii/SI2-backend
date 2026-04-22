@@ -121,7 +121,7 @@ class AssignFreePlanService:
 class CheckSubscriptionLimitsInput:
     """Input para verificar límites de suscripción."""
     institution: object
-    action: str  # 'add_user', 'add_product', 'add_loan', etc.
+    action: str  # 'add_user', 'add_branch', 'add_product', 'add_loan', etc.
 
 
 @dataclass(frozen=True)
@@ -186,6 +186,11 @@ class CheckSubscriptionLimitsService:
             if subscription.current_users >= plan.max_users:
                 allowed = False
                 message = f'Límite de usuarios alcanzado ({plan.max_users}). Actualiza tu plan para agregar más usuarios.'
+
+        elif payload.action == 'add_branch':
+            if subscription.current_branches >= plan.max_branches:
+                allowed = False
+                message = f'Límite de sucursales alcanzado ({plan.max_branches}). Actualiza tu plan para agregar más sucursales.'
         
         elif payload.action == 'add_product':
             if subscription.current_products >= plan.max_products:
@@ -215,6 +220,7 @@ class UpdateUsageCountersInput:
     """Input para actualizar contadores de uso."""
     institution: object
     users_delta: int = 0
+    branches_delta: int = 0
     products_delta: int = 0
     loans_delta: int = 0
     storage_delta: float = 0.0
@@ -245,6 +251,9 @@ class UpdateUsageCountersService:
         # Actualizar contadores
         if payload.users_delta != 0:
             subscription.current_users = max(0, subscription.current_users + payload.users_delta)
+
+        if payload.branches_delta != 0:
+            subscription.current_branches = max(0, subscription.current_branches + payload.branches_delta)
         
         if payload.products_delta != 0:
             subscription.current_products = max(0, subscription.current_products + payload.products_delta)

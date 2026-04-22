@@ -16,6 +16,8 @@ urlpatterns = [
     path('saas/', include('api.saas.urls')),
     # Sprint 1: Gestión de clientes/prestatarios
     path('clients/', include('api.clients.urls')),
+    # Sprint 2: Gestión de sucursales
+    path('branches/', include('api.branches.urls')),
     # Sprint 2: Gestión de productos crediticios
     path('products/', include('api.products.urls')),
     # Sprint 3: Gestión de solicitudes de crédito
