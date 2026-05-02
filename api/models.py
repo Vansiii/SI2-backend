@@ -26,6 +26,7 @@ from api.core.models import (
 from api.tenants.models import (
     FinancialInstitution,
     FinancialInstitutionMembership,
+    TenantBranding,
 )
 
 # ============================================================
@@ -104,6 +105,7 @@ __all__ = [
     # Tenants
     'FinancialInstitution',
     'FinancialInstitutionMembership',
+    'TenantBranding',
     # Authentication
     'PasswordResetToken',
     'LoginAttempt',
