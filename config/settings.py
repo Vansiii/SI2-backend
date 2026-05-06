@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',  # CORS headers
     'rest_framework',
+    'django_filters',  # Filtering
     'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',  # API Documentation
     # Aplicación principal
