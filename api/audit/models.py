@@ -49,6 +49,13 @@ class AuditLog(models.Model):
         ('client_activate', 'Activación de Cliente'),
         ('client_deactivate', 'Desactivación de Cliente'),
         ('subscription_change', 'Cambio de Suscripción'),
+        
+        # Operaciones de verificación de identidad (CU-13)
+        ('identity_verification_start', 'Verificación de Identidad Iniciada'),
+        ('identity_verification_approved', 'Verificación de Identidad Aprobada'),
+        ('identity_verification_declined', 'Verificación de Identidad Rechazada'),
+        ('identity_verification_error', 'Error en Verificación de Identidad'),
+        ('identity_verification_webhook', 'Webhook de Verificación de Identidad Recibido'),
     ]
     
     SEVERITY_LEVELS = [

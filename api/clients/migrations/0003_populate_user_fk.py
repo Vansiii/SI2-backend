@@ -16,7 +16,7 @@ def populate_user_fk(apps, schema_editor):
     
     for client in Client.objects.all():
         if not client.email:
-            print(f"⚠️  Cliente {client.id} sin email, saltando...")
+            print(f"[-] Cliente {client.id} sin email, saltando...")
             continue
             
         try:
@@ -24,19 +24,19 @@ def populate_user_fk(apps, schema_editor):
             client.user = user
             client.save(update_fields=['user'])
             updated_count += 1
-            print(f"✅ Cliente {client.id} ({client.email}) vinculado a User {user.id}")
+            print(f"[OK] Cliente {client.id} ({client.email}) vinculado a User {user.id}")
         except User.DoesNotExist:
             not_found_count += 1
-            print(f"❌ No se encontró usuario para cliente {client.id} con email: {client.email}")
+            print(f"[X] No se encontró usuario para cliente {client.id} con email: {client.email}")
         except User.MultipleObjectsReturned:
             # Si hay múltiples usuarios, tomar el primero
             user = User.objects.filter(email=client.email).first()
             client.user = user
             client.save(update_fields=['user'])
             updated_count += 1
-            print(f"⚠️  Múltiples usuarios con email {client.email}, usando User {user.id}")
+            print(f"[-] Múltiples usuarios con email {client.email}, usando User {user.id}")
     
-    print(f"\n📊 Resumen:")
+    print(f"\nResumen:")
     print(f"   Clientes vinculados: {updated_count}")
     print(f"   Clientes sin usuario: {not_found_count}")
 
@@ -45,7 +45,7 @@ def reverse_populate_user_fk(apps, schema_editor):
     """Reversa: limpiar user_id"""
     Client = apps.get_model('clients', 'Client')
     Client.objects.update(user=None)
-    print("🔄 Campo user_id limpiado en todos los clientes")
+    print("campo user_id limpiado en todos los clientes")
 
 
 class Migration(migrations.Migration):

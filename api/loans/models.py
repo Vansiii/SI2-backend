@@ -11,14 +11,16 @@ from api.core.models import TenantModel
 
 class LoanApplication(TenantModel):
     """
-    Modelo para solicitudes de crédito
+    Modelo para solicitudes de crédito (CU-11: Gestionar Originación de Créditos)
     """
     
     # Estados de la solicitud
     class Status(models.TextChoices):
         DRAFT = 'DRAFT', 'Borrador'
         SUBMITTED = 'SUBMITTED', 'Enviada'
-        UNDER_REVIEW = 'UNDER_REVIEW', 'En Revisión'
+        IN_REVIEW = 'IN_REVIEW', 'En Revisión'
+        OBSERVED = 'OBSERVED', 'Observada'
+        UNDER_REVIEW = 'UNDER_REVIEW', 'En Revisión Interna'  # Para compatibilidad
         APPROVED = 'APPROVED', 'Aprobada'
         REJECTED = 'REJECTED', 'Rechazada'
         DISBURSED = 'DISBURSED', 'Desembolsada'
@@ -31,18 +33,61 @@ class LoanApplication(TenantModel):
         HIGH = 'HIGH', 'Alto'
         VERY_HIGH = 'VERY_HIGH', 'Muy Alto'
     
+    # Tipos de empleo
+    class EmploymentType(models.TextChoices):
+        EMPLOYED = 'EMPLOYED', 'Empleado en relación de dependencia'
+        SELF_EMPLOYED = 'SELF_EMPLOYED', 'Trabajador independiente'
+        BUSINESS_OWNER = 'BUSINESS_OWNER', 'Propietario de negocio'
+        RETIRED = 'RETIRED', 'Jubilado'
+        UNEMPLOYED = 'UNEMPLOYED', 'Desempleado'
+        STUDENT = 'STUDENT', 'Estudiante'
+        OTHER = 'OTHER', 'Otro'
+    
+    # Estados de identidad verificada
+    class IdentityVerificationStatus(models.TextChoices):
+        NOT_VERIFIED = 'NOT_VERIFIED', 'No Verificada'
+        PENDING = 'PENDING', 'Pendiente'
+        IN_PROGRESS = 'IN_PROGRESS', 'En Progreso'
+        APPROVED = 'APPROVED', 'Aprobada'
+        DECLINED = 'DECLINED', 'Rechazada'
+        MANUAL_REVIEW = 'MANUAL_REVIEW', 'Revisión Manual'
+    
+    # Estados de documentos
+    class DocumentsStatus(models.TextChoices):
+        NOT_REQUIRED = 'NOT_REQUIRED', 'No Requerida'
+        PENDING = 'PENDING', 'Pendiente'
+        COMPLETE = 'COMPLETE', 'Completa'
+        OBSERVED = 'OBSERVED', 'Observada'
+    
     # Relaciones
     client = models.ForeignKey(
         'clients.Client',
         on_delete=models.PROTECT,
         related_name='loan_applications',
-        verbose_name='Cliente'
+        verbose_name='Cliente/Prestatario'
     )
     product = models.ForeignKey(
         'products.CreditProduct',
         on_delete=models.PROTECT,
         related_name='loan_applications',
         verbose_name='Producto Crediticio'
+    )
+    branch = models.ForeignKey(
+        'branches.Branch',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='loan_applications',
+        verbose_name='Sucursal'
+    )
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_loan_applications',
+        verbose_name='Asignado a',
+        help_text='Personal interno asignado para revisar la solicitud'
     )
     
     # Información de la solicitud
@@ -65,6 +110,34 @@ class LoanApplication(TenantModel):
     purpose = models.TextField(
         verbose_name='Propósito del Crédito',
         blank=True
+    )
+    
+    # Información económica y laboral (CU-11)
+    monthly_income = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        verbose_name='Ingreso Mensual Aproximado'
+    )
+    employment_type = models.CharField(
+        max_length=30,
+        choices=EmploymentType.choices,
+        null=True,
+        blank=True,
+        verbose_name='Tipo de Empleo'
+    )
+    employment_description = models.TextField(
+        blank=True,
+        verbose_name='Descripción Laboral/Económica',
+        help_text='Detalles de la actividad laboral o económica'
+    )
+    additional_data = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name='Datos Adicionales',
+        help_text='Información adicional en formato JSON'
     )
     
     # Estado y fechas
@@ -99,6 +172,23 @@ class LoanApplication(TenantModel):
         null=True,
         blank=True,
         verbose_name='Fecha de Desembolso'
+    )
+    
+    # Verificación de identidad (CU-13 integration)
+    identity_verification_status = models.CharField(
+        max_length=20,
+        choices=IdentityVerificationStatus.choices,
+        default=IdentityVerificationStatus.NOT_VERIFIED,
+        verbose_name='Estado de Verificación de Identidad',
+        db_index=True
+    )
+    
+    # Estado de documentos (preparación para CU-12)
+    documents_status = models.CharField(
+        max_length=20,
+        choices=DocumentsStatus.choices,
+        default=DocumentsStatus.NOT_REQUIRED,
+        verbose_name='Estado de Documentos'
     )
     
     # Evaluación y scoring
@@ -171,11 +261,36 @@ class LoanApplication(TenantModel):
         related_name='approved_applications',
         verbose_name='Aprobado Por'
     )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_loan_applications',
+        verbose_name='Creado Por'
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='updated_loan_applications',
+        verbose_name='Actualizado Por'
+    )
     
     # Notas y comentarios
     notes = models.TextField(
         blank=True,
         verbose_name='Notas Internas'
+    )
+    internal_notes = models.TextField(
+        blank=True,
+        verbose_name='Notas Internas Adicionales'
+    )
+    observation_reason = models.TextField(
+        blank=True,
+        verbose_name='Motivo de Observación',
+        help_text='Razón por la cual la solicitud fue observada'
     )
     rejection_reason = models.TextField(
         blank=True,
@@ -392,3 +507,80 @@ class LoanApplicationComment(TenantModel):
     
     def __str__(self):
         return f"Comentario de {self.user} en {self.application.application_number}"
+
+
+class LoanApplicationStatusHistory(TenantModel):
+    """
+    Historial de cambios de estado de una solicitud de crédito (CU-11: Timeline)
+    
+    Registra cada cambio de estado de la solicitud con detalles del actor,
+    motivo y metadata adicional. Permite generar un timeline visible al prestatario
+    e internamente para auditoría.
+    """
+    
+    application = models.ForeignKey(
+        LoanApplication,
+        on_delete=models.CASCADE,
+        related_name='status_history',
+        verbose_name='Solicitud'
+    )
+    previous_status = models.CharField(
+        max_length=20,
+        verbose_name='Estado Anterior',
+        help_text='Estado anterior de la solicitud'
+    )
+    new_status = models.CharField(
+        max_length=20,
+        verbose_name='Nuevo Estado',
+        help_text='Nuevo estado de la solicitud'
+    )
+    title = models.CharField(
+        max_length=255,
+        verbose_name='Título del Evento',
+        help_text='Título visible para el prestatario y staff'
+    )
+    description = models.TextField(
+        verbose_name='Descripción',
+        blank=True,
+        help_text='Descripción detallada del cambio de estado'
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='status_changes_made',
+        verbose_name='Actor',
+        help_text='Usuario que realizó el cambio de estado'
+    )
+    actor_role = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name='Rol del Actor',
+        help_text='Rol del usuario que hizo el cambio'
+    )
+    is_visible_to_borrower = models.BooleanField(
+        default=True,
+        verbose_name='Visible para Prestatario',
+        help_text='Si el evento es visible en el timeline del prestatario'
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name='Metadata',
+        help_text='Información adicional en formato JSON'
+    )
+    
+    class Meta:
+        verbose_name = 'Historial de Estado de Solicitud'
+        verbose_name_plural = 'Historiales de Estados de Solicitudes'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['institution', 'application']),
+            models.Index(fields=['institution', 'created_at']),
+            models.Index(fields=['application', 'created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.application.application_number}: {self.previous_status} → {self.new_status}"
+

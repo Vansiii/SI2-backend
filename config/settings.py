@@ -74,6 +74,7 @@ INSTALLED_APPS = [
     'api.branches',  # Gestión de sucursales
     'api.products',  # Gestión de productos crediticios
     'api.loans',  # Gestión de solicitudes de crédito
+    'api.identity_verification',  # Verificación de identidad con Didit
 ]
 
 MIDDLEWARE = [
