@@ -5,16 +5,23 @@ import io
 import re
 from typing import Optional
 
-import magic
 from PIL import Image
 
-from .constants import CATEGORY_VALIDATIONS
+from .constants import CATEGORY_VALIDATIONS, EXTENSION_TO_MIME
 from .exceptions import FileTooLargeException, InvalidFileTypeException
+
+# Intentar importar python-magic, si no está disponible usar fallback
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
 
 
 def validate_real_mime_type(file, allowed_types: set) -> str:
     """
     Validar tipo MIME real del archivo usando python-magic.
+    Si magic no está disponible, usa la extensión como fallback.
     
     Args:
         file: Archivo subido
@@ -26,21 +33,34 @@ def validate_real_mime_type(file, allowed_types: set) -> str:
     Raises:
         InvalidFileTypeException: Si el tipo no está permitido
     """
-    # Leer primeros 2KB para detectar tipo
-    file.seek(0)
-    content = file.read(2048)
-    file.seek(0)
+    # Intentar detectar MIME real
+    mime_type = None
     
-    # Detectar MIME real
-    mime = magic.from_buffer(content, mime=True)
+    if MAGIC_AVAILABLE:
+        try:
+            # Leer primeros 2KB para detectar tipo
+            file.seek(0)
+            content = file.read(2048)
+            file.seek(0)
+            
+            # Detectar MIME real
+            mime_type = magic.from_buffer(content, mime=True)
+        except Exception:
+            # Si falla magic, usar extensión
+            pass
     
-    if mime not in allowed_types:
+    # Fallback: usar extensión del archivo
+    if not mime_type:
+        extension = file.name.rsplit('.', 1)[-1].lower() if '.' in file.name else ''
+        mime_type = EXTENSION_TO_MIME.get(extension, 'application/octet-stream')
+    
+    if mime_type not in allowed_types:
         raise InvalidFileTypeException(
-            f"Tipo de archivo no permitido: {mime}. "
+            f"Tipo de archivo no permitido: {mime_type}. "
             f"Tipos aceptados: {', '.join(allowed_types)}"
         )
     
-    return mime
+    return mime_type
 
 
 def validate_file_size(file, max_size: int) -> int:
