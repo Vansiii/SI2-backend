@@ -32,6 +32,18 @@ class ProfileAPIView(APIView):
             'is_active': user.is_active,
         }
         
+        # Obtener institución desde membresías activas
+        membership = user.institution_memberships.filter(is_active=True).select_related('institution').first()
+        if membership and membership.institution:
+            profile_data['institution'] = {
+                'id': membership.institution.id,
+                'name': membership.institution.name,
+                'slug': membership.institution.slug,
+                'institution_type': membership.institution.institution_type,
+            }
+        else:
+            profile_data['institution'] = None
+        
         # Agregar datos de 2FA
         if hasattr(user, 'two_factor'):
             profile_data['two_factor_enabled'] = user.two_factor.is_enabled

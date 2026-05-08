@@ -14,8 +14,12 @@ urlpatterns = [
     path('users/', include('api.users.urls')),
     # Sprint 6: Panel de administración SaaS
     path('saas/', include('api.saas.urls')),
+    # Sistema de backups para tenants
+    path('saas/', include('api.backups.urls')),
     # Personalización white-label del tenant
     path('tenant/', include('api.tenants.urls')),
+    # Gestión de archivos y storage
+    path('storage/', include('api.storage.urls')),
     # Sprint 1: Gestión de clientes/prestatarios
     path('clients/', include('api.clients.urls')),
     # Sprint 2: Gestión de sucursales

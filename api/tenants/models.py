@@ -122,12 +122,45 @@ class TenantBranding(TimeStampedModel):
 		verbose_name='Nombre Visible',
 		help_text='Nombre institucional que se mostrará en la interfaz',
 	)
+	
+	# === NUEVO: Referencias a FileResource ===
+	logo_file = models.ForeignKey(
+		'storage.FileResource',
+		null=True,
+		blank=True,
+		on_delete=models.SET_NULL,
+		related_name='logo_for_tenant',
+		verbose_name='Archivo de Logo',
+		help_text='Logo principal de la institución',
+	)
+	
+	favicon_file = models.ForeignKey(
+		'storage.FileResource',
+		null=True,
+		blank=True,
+		on_delete=models.SET_NULL,
+		related_name='favicon_for_tenant',
+		verbose_name='Archivo de Favicon',
+		help_text='Favicon para el navegador',
+	)
+	
+	cover_file = models.ForeignKey(
+		'storage.FileResource',
+		null=True,
+		blank=True,
+		on_delete=models.SET_NULL,
+		related_name='cover_for_tenant',
+		verbose_name='Archivo de Imagen de Portada',
+		help_text='Imagen de portada para landing page',
+	)
+	
+	# === DEPRECADO: Mantener temporalmente para migración ===
 	logo = models.FileField(
 		upload_to=tenant_branding_logo_upload_to,
 		blank=True,
 		null=True,
-		verbose_name='Logo Principal',
-		help_text='Logo principal para la interfaz white-label',
+		verbose_name='Logo Principal (DEPRECADO)',
+		help_text='DEPRECADO: Usar logo_file en su lugar',
 	)
 	primary_color = models.CharField(
 		max_length=7,
@@ -172,6 +205,34 @@ class TenantBranding(TimeStampedModel):
 
 	def __str__(self) -> str:
 		return f'{self.institution.name} - Branding'
+	
+	# === NUEVO: Métodos para obtener URLs ===
+	def get_logo_url(self, expires_in: int = 3600) -> str | None:
+		"""Obtener URL del logo (signed URL si es privado)."""
+		if self.logo_file and self.logo_file.status == 'active':
+			url = self.logo_file.get_signed_url(expires_in)
+			if url:
+				return url
+		# Fallback a logo antiguo durante migración
+		if self.logo:
+			return self.logo.url
+		return None
+	
+	def get_favicon_url(self, expires_in: int = 3600) -> str | None:
+		"""Obtener URL del favicon."""
+		if self.favicon_file and self.favicon_file.status == 'active':
+			url = self.favicon_file.get_signed_url(expires_in)
+			if url:
+				return url
+		return None
+	
+	def get_cover_url(self, expires_in: int = 3600) -> str | None:
+		"""Obtener URL de la imagen de portada."""
+		if self.cover_file and self.cover_file.status == 'active':
+			url = self.cover_file.get_signed_url(expires_in)
+			if url:
+				return url
+		return None
 
 	@classmethod
 	def default_payload(cls, institution: FinancialInstitution) -> dict:
@@ -186,6 +247,8 @@ class TenantBranding(TimeStampedModel):
 			'display_name': institution.name,
 			'logo': None,
 			'logo_url': None,
+			'favicon_url': None,
+			'cover_url': None,
 			'primary_color': DEFAULT_TENANT_PRIMARY_COLOR,
 			'secondary_color': DEFAULT_TENANT_SECONDARY_COLOR,
 			'accent_color': DEFAULT_TENANT_ACCENT_COLOR,
