@@ -71,6 +71,8 @@ INSTALLED_APPS = [
     'api.users',
     'api.saas',
     'api.audit',
+    'api.storage',  # Gestión de archivos en Supabase Storage
+    'api.backups',  # Sistema de backups por tenant
     'api.clients',  # Gestión de clientes/prestatarios
     'api.branches',  # Gestión de sucursales
     'api.products',  # Gestión de productos crediticios
@@ -386,3 +388,23 @@ CORS_ALLOW_METHODS = [
     'POST',
     'PUT',
 ]
+
+
+# Supabase Storage Configuration
+# https://supabase.com/docs/guides/storage
+SUPABASE_URL = os.getenv('SUPABASE_URL', '')
+SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '')
+SUPABASE_BUCKET = os.getenv('SUPABASE_BUCKET', 'uploads')
+
+# Backup Configuration
+SUPABASE_BACKUP_BUCKET = os.getenv('SUPABASE_BACKUP_BUCKET', 'backups')
+BACKUP_SIGNED_URL_EXPIRATION = int(os.getenv('BACKUP_SIGNED_URL_EXPIRATION', 3600))  # 1 hora
+BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', 30))  # 30 días
+
+# File Upload Limits
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_IMAGE_SIZE = 5 * 1024 * 1024    # 5 MB
+MAX_FAVICON_SIZE = 1 * 1024 * 1024  # 1 MB
+MAX_COVER_SIZE = 10 * 1024 * 1024   # 10 MB
+MAX_DOCUMENT_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_AUDIO_SIZE = 20 * 1024 * 1024   # 20 MB
