@@ -423,3 +423,31 @@ def format_file_size(size_bytes: int) -> str:
         return f"{size_bytes / (1024 * 1024):.1f} MB"
     else:
         return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+# ============================================================================
+# MAPA DE EXTENSIONES A TIPOS MIME (FALLBACK CUANDO MAGIC NO ESTÁ DISPONIBLE)
+# ============================================================================
+
+EXTENSION_TO_MIME = {
+    # Imágenes
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml',
+    'gif': 'image/gif',
+    'bmp': 'image/bmp',
+    'tiff': 'image/tiff',
+    'tif': 'image/tiff',
+    # Documentos
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    # Otros
+    'txt': 'text/plain',
+    'csv': 'text/csv',
+    'json': 'application/json',
+    'xml': 'application/xml',
+    'zip': 'application/zip',
+}
