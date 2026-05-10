@@ -78,6 +78,7 @@ INSTALLED_APPS = [
     'api.products',  # Gestión de productos crediticios
     'api.loans',  # Gestión de solicitudes de crédito
     'api.identity_verification',  # Verificación de identidad con Didit
+    'api.reports',  # Reportes personalizables con audio
 ]
 
 MIDDLEWARE = [
@@ -94,6 +95,7 @@ MIDDLEWARE = [
     'api.middleware.RateLimitMiddleware',  # Rate limiting
     'api.middleware.audit_middleware.AuditMiddleware',  # Auditoría automática de acciones
     'api.middleware.audit_middleware.SecurityEventMiddleware',  # Eventos de seguridad
+    'api.middleware.debug_middleware.DebugRequestMiddleware',  # Debug middleware
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -408,3 +410,48 @@ MAX_FAVICON_SIZE = 1 * 1024 * 1024  # 1 MB
 MAX_COVER_SIZE = 10 * 1024 * 1024   # 10 MB
 MAX_DOCUMENT_SIZE = 10 * 1024 * 1024  # 10 MB
 MAX_AUDIO_SIZE = 20 * 1024 * 1024   # 20 MB
+
+
+# Logging Configuration
+# https://docs.djangoproject.com/en/6.0/topics/logging/
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'WARNING',  # Cambiado de DEBUG a WARNING
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'WARNING',  # Cambiado de DEBUG a WARNING para ocultar queries SQL
+            'propagate': False,
+        },
+        'api': {
+            'handlers': ['console'],
+            'level': 'INFO',  # Cambiado de DEBUG a INFO
+        },
+    },
+}

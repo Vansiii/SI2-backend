@@ -164,6 +164,18 @@ DOCUMENT_MIME_TYPES = [
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',  # .xlsx
 ]
 
+AUDIO_MIME_TYPES = [
+    'audio/mpeg',      # MP3
+    'audio/mp3',       # MP3 (alternativo)
+    'audio/wav',       # WAV
+    'audio/x-wav',     # WAV (alternativo)
+    'audio/wave',      # WAV (alternativo)
+    'audio/x-m4a',     # M4A
+    'audio/mp4',       # M4A/MP4
+    'audio/ogg',       # OGG
+    'audio/webm',      # WebM (usado por navegadores modernos)
+]
+
 ALL_DOCUMENT_MIME_TYPES = IMAGE_MIME_TYPES + DOCUMENT_MIME_TYPES
 
 # Tamaños máximos (en bytes)
@@ -444,6 +456,13 @@ EXTENSION_TO_MIME = {
     'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'xls': 'application/vnd.ms-excel',
     'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    # Audio
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'm4a': 'audio/x-m4a',
+    'ogg': 'audio/ogg',
+    'webm': 'audio/webm',
+    'oga': 'audio/ogg',
     # Otros
     'txt': 'text/plain',
     'csv': 'text/csv',

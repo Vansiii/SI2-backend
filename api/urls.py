@@ -32,4 +32,6 @@ urlpatterns = [
     path('identity-verifications/', include('api.identity_verification.urls')),
     # Auditoría y seguridad (solo SaaS admin)
     path('', include('api.audit.urls')),
+    # CU-39: Reportes personalizables con audio
+    path('reports/', include('api.reports.urls')),
 ]

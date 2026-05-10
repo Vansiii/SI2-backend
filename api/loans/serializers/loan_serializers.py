@@ -1,11 +1,10 @@
 """
-Serializers para solicitudes de crédito
+Serializers para solicitudes de crédito (CU-11)
 """
 
 from rest_framework import serializers
-from .models import LoanApplication, LoanApplicationDocument, LoanApplicationComment
+from api.loans.models import LoanApplication, LoanApplicationDocument, LoanApplicationComment
 from api.clients.serializers import ClientListSerializer
-from api.products.serializers import CreditProductListSerializer
 from api.users.serializers import UserSerializer
 
 
@@ -68,7 +67,7 @@ class LoanApplicationSerializer(serializers.ModelSerializer):
     """Serializer completo para solicitud de crédito"""
     
     client_detail = ClientListSerializer(source='client', read_only=True)
-    product_detail = CreditProductListSerializer(source='product', read_only=True)
+    product_detail = serializers.SerializerMethodField()
     reviewed_by_detail = UserSerializer(source='reviewed_by', read_only=True)
     approved_by_detail = UserSerializer(source='approved_by', read_only=True)
     documents = LoanApplicationDocumentSerializer(many=True, read_only=True)
@@ -84,6 +83,11 @@ class LoanApplicationSerializer(serializers.ModelSerializer):
     can_be_approved = serializers.BooleanField(read_only=True)
     can_be_rejected = serializers.BooleanField(read_only=True)
     can_be_disbursed = serializers.BooleanField(read_only=True)
+    
+    def get_product_detail(self, obj):
+        """Obtiene el detalle del producto sin causar import circular."""
+        from api.products.serializers import CreditProductListSerializer
+        return CreditProductListSerializer(obj.product).data
     
     class Meta:
         model = LoanApplication
@@ -110,14 +114,74 @@ class LoanApplicationSerializer(serializers.ModelSerializer):
 class CreateLoanApplicationSerializer(serializers.ModelSerializer):
     """Serializer para crear solicitud de crédito"""
     
+    # Campos alternativos con guión bajo (para compatibilidad con móvil)
+    product_id = serializers.IntegerField(write_only=True, required=False)
+    branch_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    
     class Meta:
         model = LoanApplication
         fields = [
-            'client', 'product', 'requested_amount', 'term_months', 'purpose'
+            'client', 'product', 'product_id', 'requested_amount', 'term_months', 'purpose',
+            'monthly_income', 'employment_type', 'employment_description', 
+            'branch_id', 'additional_data'
         ]
+        extra_kwargs = {
+            'product': {'required': False},
+            'monthly_income': {'required': False, 'allow_null': True},
+            'employment_type': {'required': False, 'allow_null': True},
+            'employment_description': {'required': False, 'allow_blank': True},
+            'additional_data': {'required': False},
+        }
     
     def validate(self, data):
         """Validaciones de negocio"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"🔍 validate() - Data recibida: {data}")
+        
+        # Manejar product_id vs product
+        if 'product_id' in data and 'product' not in data:
+            from api.products.models import CreditProduct
+            try:
+                data['product'] = CreditProduct.objects.get(id=data.pop('product_id'))
+                logger.info(f"✓ Product convertido: {data['product']}")
+            except CreditProduct.DoesNotExist:
+                raise serializers.ValidationError({
+                    'product': 'El producto no existe'
+                })
+        elif 'product_id' in data:
+            data.pop('product_id')  # Remover si ya existe product
+        
+        # Manejar branch_id - validar y convertir a objeto Branch o None
+        if 'branch_id' in data:
+            branch_id = data.pop('branch_id')
+            logger.info(f"🔍 branch_id encontrado: {branch_id}")
+            
+            if branch_id is not None:
+                from api.branches.models import Branch
+                try:
+                    request = self.context.get('request')
+                    branch = Branch.objects.get(id=branch_id)
+                    
+                    # Validar que pertenezca a la institución del usuario
+                    if request and hasattr(request.user, 'client_profile'):
+                        client = request.user.client_profile
+                        if branch.institution != client.institution:
+                            raise serializers.ValidationError({
+                                'branch': 'La sucursal no pertenece a su institución'
+                            })
+                    
+                    data['branch'] = branch
+                    logger.info(f"✓ Branch convertido: {branch}")
+                except Branch.DoesNotExist:
+                    # Si la sucursal no existe, simplemente no incluir el campo
+                    logger.info(f"⚠️ Branch {branch_id} no existe, ignorando")
+                    pass
+            else:
+                logger.info(f"⚠️ branch_id es None, ignorando")
+        
+        logger.info(f"🔍 validate() - Data final: {data}")
+        
         product = data.get('product')
         requested_amount = data.get('requested_amount')
         term_months = data.get('term_months')
@@ -147,8 +211,42 @@ class CreateLoanApplicationSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """Crear solicitud con institución del usuario"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"🔍 create() - validated_data recibida: {validated_data}")
+        
         request = self.context.get('request')
-        validated_data['institution'] = request.user.institution
+        
+        # Obtener la institución del usuario
+        if hasattr(request.user, 'institution'):
+            institution = request.user.institution
+        else:
+            # Obtener la institución desde las membresías
+            membership = request.user.institution_memberships.first()
+            if membership:
+                institution = membership.institution
+            else:
+                raise serializers.ValidationError(
+                    'El usuario no tiene una institución asignada'
+                )
+        
+        validated_data['institution'] = institution
+        
+        # Manejar el campo branch (puede ser None o un objeto Branch)
+        # Si branch es None o no existe, no incluirlo en validated_data
+        branch = validated_data.get('branch')
+        logger.info(f"🔍 create() - branch en validated_data: {branch}")
+        
+        if branch is None:
+            validated_data.pop('branch', None)
+            logger.info(f"✓ Branch removido de validated_data")
+        
+        # Asegurar que created_by y updated_by estén establecidos
+        validated_data['created_by'] = request.user
+        validated_data['updated_by'] = request.user
+        
+        logger.info(f"🔍 create() - validated_data final: {list(validated_data.keys())}")
+        
         return super().create(validated_data)
 
 
@@ -253,3 +351,18 @@ class DisburseLoanApplicationSerializer(serializers.Serializer):
                 'Esta solicitud no puede ser desembolsada en su estado actual'
             )
         return data
+
+
+__all__ = [
+    'LoanApplicationDocumentSerializer',
+    'LoanApplicationCommentSerializer',
+    'LoanApplicationListSerializer',
+    'LoanApplicationSerializer',
+    'CreateLoanApplicationSerializer',
+    'UpdateLoanApplicationSerializer',
+    'SubmitLoanApplicationSerializer',
+    'ReviewLoanApplicationSerializer',
+    'ApproveLoanApplicationSerializer',
+    'RejectLoanApplicationSerializer',
+    'DisburseLoanApplicationSerializer',
+]

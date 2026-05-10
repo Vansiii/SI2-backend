@@ -8,6 +8,9 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from decimal import Decimal
 from api.core.models import TenantModel
 
+# Importar modelos adicionales al final del archivo para evitar importaciones circulares
+# Ver models_rules.py y models_documents.py
+
 
 class LoanApplication(TenantModel):
     """
@@ -71,6 +74,17 @@ class LoanApplication(TenantModel):
         on_delete=models.PROTECT,
         related_name='loan_applications',
         verbose_name='Producto Crediticio'
+    )
+    
+    # CU-09: Snapshot de reglas activas al momento de crear la solicitud
+    rule_set_snapshot = models.ForeignKey(
+        'loans.TenantRuleSet',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='loan_applications',
+        verbose_name='Conjunto de Reglas (Snapshot)',
+        help_text='Snapshot del conjunto de reglas activo al momento de crear la solicitud'
     )
     branch = models.ForeignKey(
         'branches.Branch',
@@ -395,6 +409,181 @@ class LoanApplication(TenantModel):
                   ((1 + monthly_rate) ** months - 1)
         
         return Decimal(str(round(payment, 2)))
+    
+    # Métodos para CU-09 y CU-12
+    def create_document_checklist(self):
+        """
+        Crea el checklist de documentos basándose en el rule_set_snapshot.
+        
+        Se ejecuta automáticamente al crear la solicitud.
+        """
+        if not self.rule_set_snapshot:
+            return
+        
+        from api.loans.models_documents import LoanApplicationDocumentRequirement
+        
+        requirements = self.rule_set_snapshot.document_requirements.filter(
+            product=self.product
+        )
+        
+        for req in requirements:
+            LoanApplicationDocumentRequirement.objects.create(
+                institution=self.institution,
+                loan_application=self,
+                document_requirement=req,
+                status='PENDING'
+            )
+    
+    def check_documents_complete(self):
+        """
+        Verifica si todos los documentos obligatorios están aprobados.
+        
+        Returns:
+            bool: True si todos los documentos obligatorios están aprobados
+        """
+        from api.loans.models_documents import LoanApplicationDocumentRequirement
+        
+        mandatory_docs = self.document_checklist.filter(
+            document_requirement__is_mandatory=True
+        )
+        
+        return not mandatory_docs.exclude(
+            status='APPROVED'
+        ).exists()
+    
+    def get_pending_documents(self):
+        """
+        Retorna los documentos pendientes de carga o aprobación.
+        
+        Returns:
+            QuerySet: Documentos pendientes
+        """
+        return self.document_checklist.exclude(
+            status='APPROVED'
+        )
+    
+    def get_timeline(self, for_client=False):
+        """
+        Retorna el timeline de la solicitud.
+        
+        Args:
+            for_client (bool): Si es True, filtra solo eventos visibles para cliente
+        
+        Returns:
+            QuerySet: Eventos del timeline ordenados cronológicamente
+        """
+        timeline = self.status_history.all()
+        
+        if for_client:
+            timeline = timeline.filter(is_visible_to_borrower=True)
+        
+        return timeline.order_by('created_at')
+    
+    def get_pending_actions(self):
+        """
+        Retorna las acciones pendientes del cliente.
+        
+        Returns:
+            QuerySet: Acciones pendientes
+        """
+        return self.status_history.filter(
+            requires_client_action=True,
+            action_completed_at__isnull=True
+        ).order_by('created_at')
+    
+    def get_current_stage(self):
+        """
+        Retorna la etapa actual de la solicitud.
+        
+        Returns:
+            dict: Información de la etapa actual
+        """
+        latest_status = self.status_history.first()
+        
+        if not latest_status:
+            return {
+                'status': self.status,
+                'message': 'Solicitud creada',
+                'date': self.created_at
+            }
+        
+        return {
+            'status': latest_status.new_status,
+            'message': latest_status.title,
+            'date': latest_status.created_at,
+            'requires_action': hasattr(latest_status, 'requires_client_action') and latest_status.requires_client_action
+        }
+
+    def add_timeline_event(
+        self,
+        to_status: str,
+        changed_by=None,
+        notes: str = '',
+        is_visible_to_client: bool = True,
+        client_message: str = '',
+        requires_client_action: bool = False,
+        action_description: str = '',
+        action_url: str = '',
+        send_notification: bool = True
+    ):
+        """
+        Agrega un evento al historial de estados y actualiza el estado de la solicitud.
+        
+        Args:
+            to_status: Nuevo estado
+            changed_by: Usuario que realiza el cambio
+            notes: Notas internas
+            is_visible_to_client: Si es visible para el prestatario
+            client_message: Mensaje amigable para el cliente
+            requires_client_action: Si requiere acción del cliente
+            action_description: Descripción de la acción requerida
+            action_url: URL para realizar la acción
+            send_notification: Si se debe enviar notificación
+        """
+        from django.utils import timezone
+        
+        previous_status = self.status
+        self.status = to_status
+        now = timezone.now()
+        
+        # Actualizar fechas según el estado
+        update_fields = ['status', 'updated_at']
+        
+        if to_status == self.Status.SUBMITTED:
+            self.submitted_at = now
+            update_fields.append('submitted_at')
+        elif to_status == self.Status.APPROVED:
+            self.approved_at = now
+            update_fields.append('approved_at')
+        elif to_status == self.Status.REJECTED:
+            self.rejected_at = now
+            update_fields.append('rejected_at')
+        elif to_status == self.Status.DISBURSED:
+            self.disbursed_at = now
+            update_fields.append('disbursed_at')
+            
+        self.save(update_fields=update_fields)
+        
+        # Crear registro de historial
+        from api.loans.models import LoanApplicationStatusHistory
+        history = LoanApplicationStatusHistory.objects.create(
+            institution=self.institution,
+            application=self,
+            previous_status=previous_status,
+            new_status=to_status,
+            title=client_message or f"Estado cambiado a {self.get_status_display()}",
+            description=notes,
+            actor=changed_by,
+            is_visible_to_borrower=is_visible_to_client,
+            client_message=client_message,
+            requires_client_action=requires_client_action,
+            action_description=action_description,
+            action_url=action_url,
+            notification_sent=False
+        )
+        
+        return history
+
 
 
 class LoanApplicationDocument(TenantModel):
@@ -516,6 +705,11 @@ class LoanApplicationStatusHistory(TenantModel):
     Registra cada cambio de estado de la solicitud con detalles del actor,
     motivo y metadata adicional. Permite generar un timeline visible al prestatario
     e internamente para auditoría.
+    
+    MEJORAS PARA CU-07:
+    - Campos para visibilidad del cliente
+    - Campos para acciones pendientes
+    - Campos para notificaciones
     """
     
     application = models.ForeignKey(
@@ -564,6 +758,51 @@ class LoanApplicationStatusHistory(TenantModel):
         verbose_name='Visible para Prestatario',
         help_text='Si el evento es visible en el timeline del prestatario'
     )
+    
+    # NUEVOS CAMPOS PARA CU-07
+    client_message = models.TextField(
+        blank=True,
+        verbose_name='Mensaje para Cliente',
+        help_text='Mensaje amigable para mostrar al cliente en el timeline'
+    )
+    
+    requires_client_action = models.BooleanField(
+        default=False,
+        verbose_name='Requiere Acción del Cliente',
+        help_text='Si el cliente debe realizar alguna acción'
+    )
+    
+    action_description = models.TextField(
+        blank=True,
+        verbose_name='Descripción de Acción',
+        help_text='Descripción de la acción que debe realizar el cliente'
+    )
+    
+    action_url = models.CharField(
+        max_length=500,
+        blank=True,
+        verbose_name='URL de Acción',
+        help_text='URL a la que debe ir el cliente para completar la acción'
+    )
+    
+    action_completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Acción Completada'
+    )
+    
+    notification_sent = models.BooleanField(
+        default=False,
+        verbose_name='Notificación Enviada',
+        help_text='Si se envió notificación al cliente'
+    )
+    
+    notification_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Fecha de Envío de Notificación'
+    )
+    
     metadata = models.JSONField(
         default=dict,
         blank=True,
@@ -579,8 +818,32 @@ class LoanApplicationStatusHistory(TenantModel):
             models.Index(fields=['institution', 'application']),
             models.Index(fields=['institution', 'created_at']),
             models.Index(fields=['application', 'created_at']),
+            models.Index(fields=['is_visible_to_borrower']),
+            models.Index(fields=['requires_client_action', 'action_completed_at']),
         ]
     
     def __str__(self):
         return f"{self.application.application_number}: {self.previous_status} → {self.new_status}"
+    
+    @property
+    def is_pending_action(self):
+        """Retorna si hay una acción pendiente del cliente."""
+        return self.requires_client_action and not self.action_completed_at
 
+
+
+# Importar modelos adicionales para CU-09 y CU-12
+from api.loans.models_rules import (
+    TenantRuleSet,
+    EligibilityRule,
+    CreditProductParameter,
+    # DocumentRequirement,  # DEPRECATED: Eliminado - usar ProductDocumentRequirement
+    WorkflowStageDefinition,
+    DecisionThreshold,
+    RuleSetAudit,
+)
+
+from api.loans.models_documents import (
+    LoanApplicationDocumentRequirement,
+    DocumentReviewHistory,
+)

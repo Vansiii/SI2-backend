@@ -201,6 +201,8 @@ class CreditApplicationDetailSerializer(serializers.ModelSerializer):
     """Serializer completo para ver detalles de una solicitud"""
     client = ClientListSerializer(read_only=True)
     product = CreditProductListSerializer(read_only=True)
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    client_name = serializers.CharField(source='client.user.get_full_name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     identity_verification_display = serializers.CharField(
         source='get_identity_verification_status_display', read_only=True
@@ -229,17 +231,22 @@ class CreditApplicationDetailSerializer(serializers.ModelSerializer):
     timeline = serializers.SerializerMethodField()
     comments = serializers.SerializerMethodField()
     documents = serializers.SerializerMethodField()
+    identity_verification_id = serializers.SerializerMethodField()
+    identity_verification_details = serializers.SerializerMethodField()
+    product_workflow_stages = serializers.SerializerMethodField()
+    current_workflow_stage = serializers.SerializerMethodField()
+    risk_level_display = serializers.CharField(source='get_risk_level_display', read_only=True, allow_null=True)
     
     class Meta:
         model = LoanApplication
         fields = [
-            'id', 'application_number', 'client', 'product', 'branch',
+            'id', 'application_number', 'client', 'client_name', 'product', 'product_name', 'branch',
             'requested_amount', 'term_months', 'purpose', 'monthly_income',
             'employment_type', 'employment_type_display', 'employment_description',
             'additional_data', 'status', 'status_display',
             'identity_verification_status', 'identity_verification_display',
             'documents_status', 'documents_status_display',
-            'credit_score', 'risk_level', 'debt_to_income_ratio',
+            'credit_score', 'risk_level', 'risk_level_display', 'debt_to_income_ratio',
             'approved_amount', 'approved_term_months', 'approved_interest_rate',
             'monthly_payment', 'assigned_to', 'assigned_to_name',
             'reviewed_by', 'reviewed_by_name', 'approved_by', 'approved_by_name',
@@ -247,6 +254,8 @@ class CreditApplicationDetailSerializer(serializers.ModelSerializer):
             'notes', 'internal_notes', 'observation_reason', 'rejection_reason',
             'submitted_at', 'reviewed_at', 'approved_at', 'rejected_at',
             'disbursed_at', 'created_at', 'updated_at',
+            'identity_verification_id', 'identity_verification_details',
+            'product_workflow_stages', 'current_workflow_stage',
             'timeline', 'comments', 'documents'
         ]
         read_only_fields = fields
@@ -287,11 +296,70 @@ class CreditApplicationDetailSerializer(serializers.ModelSerializer):
             obj.documents.all(), many=True, context=self.context
         ).data
 
+    def get_identity_verification_id(self, obj):
+        """Obtener ID de la última verificación de identidad"""
+        latest = obj.identity_verifications.order_by('-created_at').first()
+        return latest.id if latest else None
+    
+    def get_identity_verification_details(self, obj):
+        """Obtener detalles de la última verificación de identidad"""
+        latest = obj.identity_verifications.order_by('-created_at').first()
+        if not latest:
+            return None
+        
+        return {
+            'id': latest.id,
+            'status': latest.status,
+            'decision': latest.decision,
+            'document_type': latest.document_type,
+            'document_number': latest.document_number,
+            'full_name': latest.full_name,
+            'date_of_birth': latest.date_of_birth.isoformat() if latest.date_of_birth else None,
+            'country': latest.country,
+            'provider': latest.provider,
+            'completed_at': latest.completed_at.isoformat() if latest.completed_at else None,
+            'created_at': latest.created_at.isoformat(),
+        }
+    
+    def get_product_workflow_stages(self, obj):
+        """Obtener las etapas de workflow del producto asociado"""
+        if obj.product and obj.product.rule_set:
+            stages = obj.product.get_workflow_stages()
+            if stages.exists():
+                from api.loans.serializers.rule_serializers import WorkflowStageDefinitionSerializer
+                return WorkflowStageDefinitionSerializer(stages, many=True).data
+        return []
+    
+    def get_current_workflow_stage(self, obj):
+        """
+        Determinar la etapa actual del workflow basada en el estado de la solicitud.
+        
+        Busca directamente en el workflow del producto una etapa cuyo stage_code
+        coincida con el estado actual de la solicitud. Esto permite workflows
+        personalizados por producto sin necesidad de mapeos estáticos.
+        """
+        if not obj.product or not obj.product.rule_set:
+            return None
+        
+        # Obtener el estado actual de la solicitud
+        current_status = obj.status
+        
+        # Buscar la etapa en el workflow del producto que coincida con el estado actual
+        stages = obj.product.get_workflow_stages()
+        stage = stages.filter(stage_code=current_status).first()
+        
+        if stage:
+            from api.loans.serializers.rule_serializers import WorkflowStageDefinitionSerializer
+            return WorkflowStageDefinitionSerializer(stage).data
+        
+        return None
+
 
 class CreditApplicationBorrowerListSerializer(serializers.ModelSerializer):
     """Serializer para listar solicitudes del prestatario"""
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     product_name = serializers.CharField(source='product.name', read_only=True)
+    client_name = serializers.CharField(source='client.user.get_full_name', read_only=True)
     identity_verification_display = serializers.CharField(
         source='get_identity_verification_status_display', read_only=True
     )
@@ -299,9 +367,9 @@ class CreditApplicationBorrowerListSerializer(serializers.ModelSerializer):
     class Meta:
         model = LoanApplication
         fields = [
-            'id', 'application_number', 'product_name', 'requested_amount',
-            'term_months', 'status', 'status_display',
+            'id', 'application_number', 'client_name', 'product_name', 'requested_amount',
+            'term_months', 'purpose', 'status', 'status_display',
             'identity_verification_status', 'identity_verification_display',
-            'submitted_at', 'approved_at', 'rejected_at', 'created_at'
+            'submitted_at', 'approved_at', 'rejected_at', 'created_at', 'updated_at'
         ]
         read_only_fields = fields
