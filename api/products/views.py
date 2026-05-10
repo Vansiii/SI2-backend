@@ -1,25 +1,27 @@
 """
-Views para gestión de productos crediticios.
+Views para gestión de productos crediticios (REFACTORIZADO).
 """
 
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 
 from api.products.models import CreditProduct
 from api.products.serializers import (
     CreditProductSerializer,
+    CreditProductWithParametersSerializer,
     CreateCreditProductSerializer,
     UpdateCreditProductSerializer,
     CreditProductListSerializer,
+    CreditProductParameterSerializer,
+    ProductCalculationRequestSerializer,
+    ProductCalculationResponseSerializer,
 )
-from api.products.services import (
-    ProductManagementService,
-    CreateProductInput,
-)
+from api.products.services import ProductCalculationService
 from api.core.permissions import require_permission
 from api.core.pagination import StandardResultsSetPagination
 
@@ -60,12 +62,18 @@ class CreditProductListCreateAPIView(APIView):
                 required=False,
             ),
             OpenApiParameter(
-                name='product_type',
-                type=OpenApiTypes.STR,
+                name='product_type_id',
+                type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
-                description='Filtrar por tipo de producto',
+                description='Filtrar por ID de tipo de producto',
                 required=False,
-                enum=['PERSONAL', 'VEHICULAR', 'HIPOTECARIO', 'VIVIENDA_SOCIAL', 'PYME', 'EMPRESARIAL', 'AGROPECUARIO', 'MICROEMPRESA'],
+            ),
+            OpenApiParameter(
+                name='rule_set_id',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Filtrar por ID de conjunto de reglas',
+                required=False,
             ),
         ],
         responses={
@@ -80,16 +88,20 @@ class CreditProductListCreateAPIView(APIView):
         
         # Parámetros de filtro
         is_active = request.query_params.get('is_active')
-        product_type = request.query_params.get('product_type')
+        product_type_id = request.query_params.get('product_type_id')
+        rule_set_id = request.query_params.get('rule_set_id')
         
         # Construir queryset
-        queryset = CreditProduct.objects.filter(institution_id=institution_id)
+        queryset = CreditProduct.objects.filter(institution_id=institution_id).select_related('product_type', 'rule_set')
         
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
         
-        if product_type:
-            queryset = queryset.filter(product_type=product_type)
+        if product_type_id:
+            queryset = queryset.filter(product_type_id=product_type_id)
+        
+        if rule_set_id:
+            queryset = queryset.filter(rule_set_id=rule_set_id)
         
         queryset = queryset.order_by('display_order', 'name')
         
@@ -105,39 +117,6 @@ class CreditProductListCreateAPIView(APIView):
     
     def post(self, request):
         """Crea un nuevo producto crediticio."""
-        serializer = CreateCreditProductSerializer(data=request.data)
-        
-        if not serializer.is_valid():
-            return Response({
-                'success': False,
-                'message': 'Datos inválidos',
-                'errors': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Crear input para el servicio
-        input_data = CreateProductInput(
-            name=serializer.validated_data['name'],
-            code=serializer.validated_data['code'],
-            product_type=serializer.validated_data['product_type'],
-            description=serializer.validated_data['description'],
-            min_amount=serializer.validated_data['min_amount'],
-            max_amount=serializer.validated_data['max_amount'],
-            min_term_months=serializer.validated_data['min_term_months'],
-            max_term_months=serializer.validated_data['max_term_months'],
-            interest_rate=serializer.validated_data['interest_rate'],
-            interest_type=serializer.validated_data.get('interest_type', 'FIXED'),
-            commission_rate=serializer.validated_data.get('commission_rate', 0),
-            insurance_rate=serializer.validated_data.get('insurance_rate', 0),
-            payment_frequency=serializer.validated_data.get('payment_frequency', 'MONTHLY'),
-            amortization_system=serializer.validated_data.get('amortization_system', 'FRENCH'),
-            min_income_required=serializer.validated_data.get('min_income_required'),
-            max_debt_to_income_ratio=serializer.validated_data.get('max_debt_to_income_ratio', 40.00),
-            min_employment_months=serializer.validated_data.get('min_employment_months', 6),
-            requires_guarantor=serializer.validated_data.get('requires_guarantor', False),
-            requires_collateral=serializer.validated_data.get('requires_collateral', False),
-            is_active=serializer.validated_data.get('is_active', True),
-        )
-        
         # Verificar permiso de creación
         if not (hasattr(request.user, 'profile') and 
                 (request.user.profile.is_saas_admin() or 
@@ -147,27 +126,27 @@ class CreditProductListCreateAPIView(APIView):
                 'message': 'No tiene permiso para crear productos'
             }, status=status.HTTP_403_FORBIDDEN)
         
-        # Llamar al servicio
-        service = ProductManagementService()
-        result = service.create_product(
-            institution_id=request.user_institution_id,
-            input_data=input_data,
-            created_by=request.user
+        serializer = CreateCreditProductSerializer(
+            data=request.data,
+            context={'request': request}
         )
         
-        if not result.success:
+        if not serializer.is_valid():
             return Response({
                 'success': False,
-                'message': result.message,
-                'errors': result.errors
+                'message': 'Datos inválidos',
+                'errors': serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        # Crear producto con documentos requeridos
+        product = serializer.save(institution_id=request.user_institution_id)
+        
         # Serializar el producto creado
-        product_serializer = CreditProductSerializer(result.product)
+        product_serializer = CreditProductSerializer(product)
         
         return Response({
             'success': True,
-            'message': result.message,
+            'message': 'Producto creado exitosamente',
             'product': product_serializer.data
         }, status=status.HTTP_201_CREATED)
 
@@ -204,6 +183,9 @@ class CreditProductDetailAPIView(APIView):
     
     def patch(self, request, product_id):
         """Actualiza un producto."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # Verificar permiso de edición
         if not (hasattr(request.user, 'profile') and 
                 (request.user.profile.is_saas_admin() or 
@@ -224,9 +206,18 @@ class CreditProductDetailAPIView(APIView):
                 'message': 'Producto no encontrado'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = UpdateCreditProductSerializer(product, data=request.data, partial=True)
+        logger.error(f"PATCH /api/products/{product_id}/ - request.data: {request.data}")
+        
+        serializer = UpdateCreditProductSerializer(
+            product,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )
         
         if not serializer.is_valid():
+            logger.error(f"PATCH /api/products/{product_id}/ - VALIDATION FAILED")
+            logger.error(f"PATCH /api/products/{product_id}/ - serializer.errors: {serializer.errors}")
             return Response({
                 'success': False,
                 'message': 'Datos inválidos',
@@ -266,6 +257,228 @@ class CreditProductDetailAPIView(APIView):
             return Response({
                 'success': True,
                 'message': f'Producto {product.name} desactivado exitosamente'
+            })
+            
+        except CreditProduct.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Producto no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+
+class CreditProductParametersAPIView(APIView):
+    """
+    Vista para obtener los parámetros activos de un producto.
+    
+    GET /api/products/{id}/parameters/ - Obtiene parámetros del RuleSet activo
+    """
+    permission_classes = [IsAuthenticated, require_permission('products.view')]
+    
+    @extend_schema(
+        tags=['Productos'],
+        summary='Obtener parámetros del producto',
+        description='Obtiene los parámetros activos del producto desde el RuleSet activo',
+        responses={
+            200: CreditProductParameterSerializer,
+            404: OpenApiTypes.OBJECT,
+        },
+    )
+    def get(self, request, product_id):
+        """Obtiene los parámetros activos del producto."""
+        try:
+            product = CreditProduct.objects.get(
+                id=product_id,
+                institution_id=request.user_institution_id
+            )
+            
+            parameters = product.get_active_parameters()
+            
+            if not parameters:
+                return Response({
+                    'success': False,
+                    'message': 'No hay parámetros configurados para este producto'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            serializer = CreditProductParameterSerializer(parameters)
+            
+            return Response({
+                'success': True,
+                'parameters': serializer.data
+            })
+            
+        except CreditProduct.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Producto no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class CreditProductCalculateAPIView(APIView):
+    """
+    Vista para calcular costos de un producto.
+    
+    POST /api/products/{id}/calculate/ - Calcula cuota y costos totales
+    """
+    permission_classes = [IsAuthenticated, require_permission('products.view')]
+    
+    @extend_schema(
+        tags=['Productos'],
+        summary='Calcular costos del producto',
+        description='Calcula la cuota mensual y costos totales para un monto y plazo específicos',
+        request=ProductCalculationRequestSerializer,
+        responses={
+            200: ProductCalculationResponseSerializer,
+            400: OpenApiTypes.OBJECT,
+            404: OpenApiTypes.OBJECT,
+        },
+    )
+    def post(self, request, product_id):
+        """Calcula costos del producto."""
+        try:
+            product = CreditProduct.objects.get(
+                id=product_id,
+                institution_id=request.user_institution_id
+            )
+            
+            # Validar request
+            request_serializer = ProductCalculationRequestSerializer(data=request.data)
+            if not request_serializer.is_valid():
+                return Response({
+                    'success': False,
+                    'message': 'Datos inválidos',
+                    'errors': request_serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            data = request_serializer.validated_data
+            
+            # Validar que el producto tenga parámetros
+            if not product.get_active_parameters():
+                return Response({
+                    'success': False,
+                    'message': 'El producto no tiene parámetros configurados'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validar monto y plazo
+            validation = ProductCalculationService.validate_product_request(
+                product=product,
+                amount=data['amount'],
+                term_months=data['term_months']
+            )
+            
+            if not validation['valid']:
+                return Response({
+                    'success': False,
+                    'message': 'Validación fallida',
+                    'errors': validation['errors']
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Calcular
+            calculation = ProductCalculationService.calculate_for_product(
+                product=product,
+                amount=data['amount'],
+                term_months=data['term_months'],
+                interest_rate=data.get('interest_rate'),
+                commission_rate=data.get('commission_rate'),
+                insurance_rate=data.get('insurance_rate'),
+                amortization_system=data.get('amortization_system'),
+            )
+            
+            if not calculation:
+                return Response({
+                    'success': False,
+                    'message': 'No se pudo calcular'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            response_serializer = ProductCalculationResponseSerializer(calculation)
+            
+            return Response({
+                'success': True,
+                'calculation': response_serializer.data
+            })
+            
+        except CreditProduct.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Producto no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class CreditProductRangesAPIView(APIView):
+    """
+    Vista para obtener los rangos configurados de un producto.
+    
+    GET /api/products/{id}/ranges/ - Obtiene rangos de montos, plazos, tasas, etc.
+    """
+    permission_classes = [IsAuthenticated, require_permission('products.view')]
+    
+    @extend_schema(
+        tags=['Productos'],
+        summary='Obtener rangos del producto',
+        description='Obtiene los rangos configurados (montos, plazos, tasas, etc.) del producto',
+        responses={
+            200: OpenApiTypes.OBJECT,
+            404: OpenApiTypes.OBJECT,
+        },
+    )
+    def get(self, request, product_id):
+        """Obtiene los rangos configurados del producto."""
+        try:
+            product = CreditProduct.objects.get(
+                id=product_id,
+                institution_id=request.user_institution_id
+            )
+            
+            ranges = ProductCalculationService.get_product_ranges(product)
+            
+            if not ranges:
+                return Response({
+                    'success': False,
+                    'message': 'No hay parámetros configurados para este producto'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            return Response({
+                'success': True,
+                'ranges': ranges
+            })
+            
+        except CreditProduct.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Producto no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class CreditProductWithParametersAPIView(APIView):
+    """
+    Vista para obtener producto con sus parámetros.
+    
+    GET /api/products/{id}/full/ - Obtiene producto completo con parámetros
+    """
+    permission_classes = [IsAuthenticated, require_permission('products.view')]
+    
+    @extend_schema(
+        tags=['Productos'],
+        summary='Obtener producto completo',
+        description='Obtiene el producto con todos sus parámetros activos incluidos',
+        responses={
+            200: CreditProductWithParametersSerializer,
+            404: OpenApiTypes.OBJECT,
+        },
+    )
+    def get(self, request, product_id):
+        """Obtiene producto con parámetros."""
+        try:
+            product = CreditProduct.objects.select_related('product_type').get(
+                id=product_id,
+                institution_id=request.user_institution_id
+            )
+            
+            serializer = CreditProductWithParametersSerializer(product)
+            
+            return Response({
+                'success': True,
+                'product': serializer.data
             })
             
         except CreditProduct.DoesNotExist:

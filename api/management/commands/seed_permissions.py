@@ -291,6 +291,22 @@ class Command(BaseCommand):
                 },
             ],
             
+            'Administración de Reglas (CU-09)': [
+                {
+                    'code': 'loans.manage_credit_rules',
+                    'name': 'Can manage credit rules and parameters',
+                    'description': 'Permite administrar reglas de crédito, parámetros de productos, reglas de elegibilidad y requisitos documentales'
+                },
+            ],
+            
+            'Gestión Documental (CU-12)': [
+                {
+                    'code': 'loans.review_loan_documents',
+                    'name': 'Can review and approve loan documents',
+                    'description': 'Permite revisar, aprobar y rechazar documentos de solicitudes de crédito'
+                },
+            ],
+            
             'Auditoría y Seguridad': [
                 {
                     'code': 'audit.view',

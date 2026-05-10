@@ -6,73 +6,64 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from .originacion.views import CreditApplicationViewSet
+from .views.rule_viewsets import (
+    TenantRuleSetViewSet,
+    EligibilityRuleViewSet,
+    CreditProductParameterViewSet,
+    # DocumentRequirementViewSet,  # DEPRECATED: Eliminado
+    WorkflowStageDefinitionViewSet,
+    DecisionThresholdViewSet,
+)
+from .views.document_viewsets import (
+    ClientDocumentViewSet,
+    StaffDocumentViewSet,
+)
+from .views.timeline_viewsets import (
+    ClientApplicationViewSet,
+)
+from .views.catalog_viewsets import (
+    DocumentTypeViewSet,
+    ProductTypeViewSet,
+    PaymentFrequencyViewSet,
+    AmortizationSystemViewSet,
+    CurrencyViewSet,
+)
 
 app_name = 'loans'
 
-# Router para CU-11 ViewSet
+# Router principal
 router = DefaultRouter()
+
+# CU-11: Originación de créditos (ViewSet existente)
 router.register(r'credit-applications', CreditApplicationViewSet, basename='credit-application')
 
+# CU-09: Administración de reglas
+router.register(r'rule-sets', TenantRuleSetViewSet, basename='rule-set')
+router.register(r'eligibility-rules', EligibilityRuleViewSet, basename='eligibility-rule')
+router.register(r'product-parameters', CreditProductParameterViewSet, basename='product-parameter')
+# router.register(r'document-requirements', DocumentRequirementViewSet, basename='document-requirement')  # DEPRECATED: Eliminado
+router.register(r'workflow-stages', WorkflowStageDefinitionViewSet, basename='workflow-stage')
+router.register(r'decision-thresholds', DecisionThresholdViewSet, basename='decision-threshold')
+
+# CU-12: Gestión documental
+router.register(r'my-documents', ClientDocumentViewSet, basename='my-document')
+router.register(r'staff/documents', StaffDocumentViewSet, basename='staff-document')
+
+# CU-07: Timeline y seguimiento
+router.register(r'my-applications', ClientApplicationViewSet, basename='my-application')
+
+# Catálogos Centralizados
+router.register(r'catalogs/document-types', DocumentTypeViewSet, basename='document-type')
+router.register(r'catalogs/product-types', ProductTypeViewSet, basename='product-type')
+router.register(r'catalogs/payment-frequencies', PaymentFrequencyViewSet, basename='payment-frequency')
+router.register(r'catalogs/amortization-systems', AmortizationSystemViewSet, basename='amortization-system')
+router.register(r'catalogs/currencies', CurrencyViewSet, basename='currency')
+
 urlpatterns = [
-    # URLs del router (CU-11)
+    # URLs del router
     path('', include(router.urls)),
     
-    # Rutas legacy (compatibilidad)
-    # CRUD básico
-    path(
-        'legacy/',
-        views.LoanApplicationListCreateAPIView.as_view(),
-        name='loan-list-create'
-    ),
-    path(
-        'legacy/<int:pk>/',
-        views.LoanApplicationDetailAPIView.as_view(),
-        name='loan-detail'
-    ),
-    
-    # Acciones de workflow
-    path(
-        'legacy/<int:pk>/submit/',
-        views.LoanApplicationSubmitAPIView.as_view(),
-        name='loan-submit'
-    ),
-    path(
-        'legacy/<int:pk>/review/',
-        views.LoanApplicationReviewAPIView.as_view(),
-        name='loan-review'
-    ),
-    path(
-        'legacy/<int:pk>/calculate-score/',
-        views.LoanApplicationCalculateScoreAPIView.as_view(),
-        name='loan-calculate-score'
-    ),
-    path(
-        'legacy/<int:pk>/approve/',
-        views.LoanApplicationApproveAPIView.as_view(),
-        name='loan-approve'
-    ),
-    path(
-        'legacy/<int:pk>/reject/',
-        views.LoanApplicationRejectAPIView.as_view(),
-        name='loan-reject'
-    ),
-    path(
-        'legacy/<int:pk>/disburse/',
-        views.LoanApplicationDisburseAPIView.as_view(),
-        name='loan-disburse'
-    ),
-    
-    # Documentos
-    path(
-        'legacy/<int:application_id>/documents/',
-        views.LoanApplicationDocumentListCreateAPIView.as_view(),
-        name='loan-documents'
-    ),
-    
-    # Comentarios
-    path(
-        'legacy/<int:application_id>/comments/',
-        views.LoanApplicationCommentListCreateAPIView.as_view(),
-        name='loan-comments'
-    ),
+    # Rutas legacy (compatibilidad) - comentadas hasta que se necesiten
+    # path('legacy/', views.LoanApplicationListCreateAPIView.as_view(), name='loan-list-create'),
+    # path('legacy/<int:pk>/', views.LoanApplicationDetailAPIView.as_view(), name='loan-detail'),
 ]

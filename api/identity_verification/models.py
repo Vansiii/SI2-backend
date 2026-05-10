@@ -229,7 +229,7 @@ class IdentityVerification(TenantModel):
 		return self.status == self.Status.DECLINED and self.decision == self.Decision.DECLINED
 	
 	def mark_approved(self, data: dict = None) -> None:
-		"""Marca la verificación como aprobada"""
+		"""Marca la verificación como aprobada y actualiza la solicitud de crédito"""
 		self.status = self.Status.APPROVED
 		self.decision = self.Decision.APPROVED
 		self.completed_at = timezone.now()
@@ -244,6 +244,102 @@ class IdentityVerification(TenantModel):
 			self.date_of_birth = data.get('date_of_birth', self.date_of_birth)
 			self.country = data.get('country', self.country)
 		self.save()
+		
+		# Actualizar solicitud de crédito si existe
+		if self.credit_application:
+			from api.loans.models import LoanApplication
+			self.credit_application.identity_verification_status = LoanApplication.IdentityVerificationStatus.APPROVED
+			self.credit_application.save(update_fields=['identity_verification_status', 'updated_at'])
+			
+			# Transicionar automáticamente según el workflow configurado del producto
+			try:
+				from api.loans.services.workflow_service import WorkflowService
+				
+				# Solo transicionar si está en SUBMITTED
+				if self.credit_application.status == 'SUBMITTED':
+					# Obtener la siguiente etapa según el workflow configurado del producto
+					next_stage = self._get_next_stage_after_identity_verification(self.credit_application)
+					
+					if next_stage:
+						WorkflowService.transition_state(
+							loan_application_id=self.credit_application.id,
+							to_status=next_stage,
+							changed_by=None,  # Sistema
+							notes='Transición automática después de verificación de identidad aprobada con DIDIT',
+							client_message='¡Tu identidad ha sido verificada exitosamente! Ahora puedes continuar con el siguiente paso.',
+							requires_client_action=True,
+							action_description='Continuar con el proceso de solicitud',
+							send_notification=True
+						)
+						import logging
+						logger = logging.getLogger(__name__)
+						logger.info(f'Solicitud {self.credit_application.id} transicionada a {next_stage} después de verificación de identidad')
+					else:
+						# Si no hay workflow configurado, solo crear evento en timeline
+						from api.loans.models import LoanApplicationStatusHistory
+						LoanApplicationStatusHistory.objects.create(
+							institution=self.credit_application.institution,
+							application=self.credit_application,
+							previous_status=self.credit_application.status,
+							new_status=self.credit_application.status,
+							title='Identidad verificada',
+							description='La identidad del cliente fue verificada exitosamente con DIDIT',
+							actor=self.user,
+							is_visible_to_borrower=True,
+							client_message='Tu identidad ha sido verificada exitosamente.'
+						)
+				else:
+					# Si no está en SUBMITTED, solo crear evento en timeline
+					from api.loans.models import LoanApplicationStatusHistory
+					LoanApplicationStatusHistory.objects.create(
+						institution=self.credit_application.institution,
+						application=self.credit_application,
+						previous_status=self.credit_application.status,
+						new_status=self.credit_application.status,
+						title='Identidad verificada',
+						description='La identidad del cliente fue verificada exitosamente con DIDIT',
+						actor=self.user,
+						is_visible_to_borrower=True,
+						client_message='Tu identidad ha sido verificada exitosamente.'
+					)
+			except Exception as e:
+				import logging
+				logger = logging.getLogger(__name__)
+				logger.error(f'Error en transición después de verificación de identidad: {e}', exc_info=True)
+	
+	def _get_next_stage_after_identity_verification(self, loan_application):
+		"""
+		Obtiene la siguiente etapa del workflow después de verificar identidad.
+		
+		Busca en el workflow configurado del producto la etapa SUBMITTED
+		y retorna su next_stage_on_success.
+		
+		Args:
+			loan_application: LoanApplication instance
+			
+		Returns:
+			str: Código de la siguiente etapa o None
+		"""
+		if not loan_application.rule_set_snapshot:
+			# Sin workflow configurado, usar transición por defecto
+			return 'IN_REVIEW'
+		
+		try:
+			# Buscar la etapa SUBMITTED en el workflow del producto
+			submitted_stage = loan_application.rule_set_snapshot.workflow_stages.filter(
+				stage_code='SUBMITTED'
+			).first()
+			
+			if submitted_stage and submitted_stage.next_stage_on_success:
+				return submitted_stage.next_stage_on_success
+			
+			# Si no hay configuración específica, usar IN_REVIEW por defecto
+			return 'IN_REVIEW'
+		except Exception as e:
+			import logging
+			logger = logging.getLogger(__name__)
+			logger.warning(f'Error obteniendo siguiente etapa del workflow: {e}')
+			return 'IN_REVIEW'
 	
 	def mark_declined(self, reason: str = '') -> None:
 		"""Marca la verificación como rechazada"""

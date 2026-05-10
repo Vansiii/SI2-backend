@@ -544,7 +544,7 @@ class CreditApplicationService:
             str: Estado de verificación de identidad
             
         Raises:
-            CreditApplicationValidationError: Si la identidad no está verificada
+            CreditApplicationValidationError: Si la identidad fue rechazada
         """
         try:
             # Obtener la verificación más reciente
@@ -567,10 +567,9 @@ class CreditApplicationService:
             else:
                 return LoanApplication.IdentityVerificationStatus.MANUAL_REVIEW
         except IdentityVerification.DoesNotExist:
-            # No hay verificación, solicitar que inicie una
-            raise CreditApplicationValidationError(
-                "Debe completar la verificación de identidad antes de enviar la solicitud"
-            )
+            # No hay verificación, permitir envío con estado PENDING
+            # La verificación se hará después del envío
+            return LoanApplication.IdentityVerificationStatus.PENDING
     
     @staticmethod
     def _create_timeline_event(

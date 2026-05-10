@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404
 from api.core.permissions import HasPermission
 from api.core.pagination import StandardResultsSetPagination
 from .models import LoanApplication, LoanApplicationDocument, LoanApplicationComment
-from .serializers import (
+from .serializers.loan_serializers import (
     LoanApplicationSerializer,
     LoanApplicationListSerializer,
     CreateLoanApplicationSerializer,
@@ -24,7 +24,7 @@ from .serializers import (
     LoanApplicationDocumentSerializer,
     LoanApplicationCommentSerializer,
 )
-from .services import LoanApplicationService
+from .services.loan_application_service import LoanApplicationService
 
 
 class LoanApplicationListCreateAPIView(generics.ListCreateAPIView):

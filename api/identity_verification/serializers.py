@@ -62,6 +62,7 @@ class IdentityVerificationDetailSerializer(serializers.ModelSerializer):
 			'full_name', 'date_of_birth', 'country',
 			'error_message',
 			'verification_url',
+			'raw_response',
 			'started_at', 'completed_at', 'expires_at', 'webhook_received_at',
 			'created_at', 'updated_at'
 		]

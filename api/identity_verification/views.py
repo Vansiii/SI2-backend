@@ -169,6 +169,9 @@ class IdentityVerificationDetailAPIView(generics.RetrieveUpdateAPIView):
 class IdentityVerificationMyAPIView(generics.RetrieveAPIView):
 	"""
 	GET: Obtener la última verificación de identidad del usuario autenticado
+	
+	Query params opcionales:
+	- credit_application_id: Filtrar por solicitud de crédito específica
 	"""
 	permission_classes = [IsAuthenticated]
 	serializer_class = IdentityVerificationDetailSerializer
@@ -179,10 +182,23 @@ class IdentityVerificationMyAPIView(generics.RetrieveAPIView):
 		if not institution:
 			raise PermissionError('No institution context')
 		
-		verification = IdentityVerification.objects.filter(
+		# Obtener credit_application_id de query params si existe
+		credit_app_id = self.request.query_params.get('credit_application_id')
+		
+		queryset = IdentityVerification.objects.filter(
 			user=self.request.user,
 			institution=institution
-		).order_by('-created_at').first()
+		)
+		
+		# Si se especifica credit_application_id, filtrar por esa solicitud
+		if credit_app_id:
+			try:
+				credit_app_id = int(credit_app_id)
+				queryset = queryset.filter(credit_application_id=credit_app_id)
+			except (ValueError, TypeError):
+				pass
+		
+		verification = queryset.order_by('-created_at').first()
 		
 		if not verification:
 			from rest_framework.exceptions import NotFound
