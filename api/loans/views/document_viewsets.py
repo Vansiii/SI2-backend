@@ -98,20 +98,33 @@ class ClientDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         - file: archivo
         - notes: notas (opcional)
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         doc_req = self.get_object()
         
+        logger.info(
+            f"[UPLOAD] Usuario {request.user.id} intentando subir documento {doc_req.id} "
+            f"para solicitud {doc_req.loan_application_id} (estado: {doc_req.loan_application.status})"
+        )
+        
         if not request.FILES.get('file'):
+            logger.warning(f"[UPLOAD] No se recibió archivo en la petición")
             return Response(
                 {'error': 'El campo "file" es requerido'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        file = request.FILES.get('file')
+        logger.info(f"[UPLOAD] Archivo recibido: {file.name}, tamaño: {file.size} bytes")
+        
         serializer = DocumentUploadSerializer(data={
             'document_requirement_id': doc_req.id,
-            'file': request.FILES.get('file')
+            'file': file
         })
         
         if not serializer.is_valid():
+            logger.error(f"[UPLOAD] Errores de validación: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
@@ -122,15 +135,18 @@ class ClientDocumentViewSet(viewsets.ReadOnlyModelViewSet):
                 notes=request.data.get('notes', '')
             )
             
+            logger.info(f"[UPLOAD] Documento {doc_req.id} subido exitosamente")
             result_serializer = self.get_serializer(updated_doc)
             return Response(result_serializer.data)
         
         except ValueError as e:
+            logger.error(f"[UPLOAD] ValueError: {str(e)}")
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
+            logger.exception(f"[UPLOAD] Error inesperado al cargar documento")
             return Response(
                 {'error': f'Error al cargar el documento: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR

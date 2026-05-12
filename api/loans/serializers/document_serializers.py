@@ -165,11 +165,12 @@ class DocumentUploadSerializer(serializers.Serializer):
             })
         
         # Verificar que la solicitud esté en un estado que permita carga de documentos
-        valid_statuses = ['DRAFT', 'SUBMITTED', 'DOCUMENTS']
-        if doc_req.loan_application.status not in valid_statuses:
+        # Permitir carga en todos los estados excepto DISBURSED, CANCELLED y REJECTED
+        invalid_statuses = ['DISBURSED', 'CANCELLED', 'REJECTED']
+        if doc_req.loan_application.status in invalid_statuses:
             raise serializers.ValidationError(
                 f"No se pueden cargar documentos en el estado actual: "
-                f"{doc_req.loan_application.status}"
+                f"{doc_req.loan_application.get_status_display()}"
             )
         
         attrs['document_requirement'] = doc_req

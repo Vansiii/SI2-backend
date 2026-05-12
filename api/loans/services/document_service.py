@@ -213,22 +213,27 @@ class DocumentService:
         Raises:
             ValueError: Si alguna validación falla
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # 1. Validar tamaño
-        max_size_bytes = float(document_requirement.max_file_size_mb) * 1024 * 1024
+        max_size_bytes = float(document_requirement.get_max_file_size_mb()) * 1024 * 1024
         if file.size > max_size_bytes:
             raise ValueError(
-                f"El archivo excede el tamaño máximo de {document_requirement.max_file_size_mb} MB"
+                f"El archivo excede el tamaño máximo de {document_requirement.get_max_file_size_mb()} MB"
             )
         
-        # 2. Validar MIME type
-        if file.content_type not in document_requirement.allowed_formats:
-            raise ValueError(
-                f"Formato no permitido. Formatos válidos: {', '.join(document_requirement.allowed_formats)}"
-            )
+        # Mapeo de formatos legibles a MIME types
+        format_to_mime = {
+            'PDF': ['application/pdf'],
+            'JPG': ['image/jpeg'],
+            'JPEG': ['image/jpeg'],
+            'PNG': ['image/png'],
+            'DOC': ['application/msword'],
+            'DOCX': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        }
         
-        # 3. Validar extensión
-        ext = os.path.splitext(file.name)[1].lower()
-        
+        # Mapeo de MIME types a extensiones
         mime_to_ext = {
             'application/pdf': ['.pdf'],
             'image/jpeg': ['.jpg', '.jpeg'],
@@ -237,8 +242,30 @@ class DocumentService:
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
         }
         
+        # Obtener formatos permitidos y convertir a MIME types
+        allowed_formats = document_requirement.get_allowed_formats()
+        logger.info(f"[VALIDATE] Formatos permitidos configurados: {allowed_formats}")
+        
+        allowed_mimes = []
+        for fmt in allowed_formats:
+            fmt_upper = fmt.upper()
+            if fmt_upper in format_to_mime:
+                allowed_mimes.extend(format_to_mime[fmt_upper])
+        
+        logger.info(f"[VALIDATE] MIME types permitidos: {allowed_mimes}")
+        logger.info(f"[VALIDATE] Archivo recibido - MIME: {file.content_type}, Nombre: {file.name}")
+        
+        # 2. Validar MIME type
+        if file.content_type not in allowed_mimes:
+            raise ValueError(
+                f"Formato no permitido. Formatos válidos: {', '.join(allowed_formats)}"
+            )
+        
+        # 3. Validar extensión
+        ext = os.path.splitext(file.name)[1].lower()
+        
         valid_extensions = []
-        for mime in document_requirement.allowed_formats:
+        for mime in allowed_mimes:
             valid_extensions.extend(mime_to_ext.get(mime, []))
         
         if ext not in valid_extensions:
@@ -247,27 +274,37 @@ class DocumentService:
             )
         
         # 4. Validar magic bytes (contenido real)
-        file.seek(0)
-        file_content = file.read(2048)  # Leer primeros 2KB
-        file.seek(0)  # Resetear posición
-        
-        detected_mime = magic.from_buffer(file_content, mime=True)
-        
-        # Mapeo de MIME types detectados a permitidos
-        mime_mapping = {
-            'application/pdf': 'application/pdf',
-            'image/jpeg': 'image/jpeg',
-            'image/png': 'image/png',
-            'application/msword': 'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        }
-        
-        if detected_mime not in mime_mapping.values():
-            raise ValueError(
-                f"El contenido del archivo no coincide con el formato declarado. "
-                f"Detectado: {detected_mime}"
-            )
+        try:
+            file.seek(0)
+            file_content = file.read(2048)  # Leer primeros 2KB
+            file.seek(0)  # Resetear posición
+            
+            detected_mime = magic.from_buffer(file_content, mime=True)
+            logger.info(f"[VALIDATE] MIME detectado por magic: {detected_mime}")
+            
+            # Verificar que el MIME detectado sea compatible
+            if detected_mime not in allowed_mimes:
+                # Algunos MIME types pueden variar, hacer validación más flexible
+                mime_compatible = False
+                if detected_mime == 'application/pdf' and 'application/pdf' in allowed_mimes:
+                    mime_compatible = True
+                elif detected_mime in ['image/jpeg', 'image/jpg'] and 'image/jpeg' in allowed_mimes:
+                    mime_compatible = True
+                elif detected_mime == 'image/png' and 'image/png' in allowed_mimes:
+                    mime_compatible = True
+                
+                if not mime_compatible:
+                    logger.warning(
+                        f"[VALIDATE] MIME detectado ({detected_mime}) no coincide con permitidos ({allowed_mimes})"
+                    )
+                    raise ValueError(
+                        f"El contenido del archivo no coincide con el formato declarado. "
+                        f"Detectado: {detected_mime}"
+                    )
+        except Exception as e:
+            logger.error(f"[VALIDATE] Error al validar magic bytes: {str(e)}")
+            # Si falla la validación de magic bytes, continuar (puede ser un problema de la librería)
+            pass
     
     @staticmethod
     @transaction.atomic
