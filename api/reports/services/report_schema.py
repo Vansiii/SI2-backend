@@ -4,11 +4,14 @@ Servicio de validación de schemas de reportes.
 Este servicio valida configuraciones de reportes (ReportConfig)
 y intenciones de voz (VoiceIntent) contra el catálogo de reportes.
 """
+import logging
 from typing import Dict, List, Any, Tuple, Optional
 from datetime import datetime, timedelta
 from decimal import Decimal
 
 from .report_catalog import ReportCatalogService
+
+logger = logging.getLogger(__name__)
 
 
 class ReportSchemaService:
@@ -79,30 +82,69 @@ class ReportSchemaService:
             )
             return False, errors
         
-        # Validar columnas
+        # Validar columnas (filtrar inválidas en lugar de rechazar)
         invalid_columns = [
             col for col in config['columns']
             if col not in report_def['available_columns']
         ]
         if invalid_columns:
-            errors.append(f"Columnas inválidas: {invalid_columns}")
+            # Filtrar columnas inválidas automáticamente
+            config['columns'] = [
+                col for col in config['columns']
+                if col in report_def['available_columns']
+            ]
+            # Solo advertir, no bloquear
+            logger.warning(f"Columnas inválidas filtradas: {invalid_columns}")
+            
+            # Si no quedan columnas válidas, usar las columnas por defecto
+            if not config['columns']:
+                config['columns'] = report_def['available_columns'][:10]  # Primeras 10 columnas
+                logger.info(f"Usando columnas por defecto: {config['columns']}")
         
         # Validar filtros
+        valid_filters = []
         for filter_item in config.get('filters', []):
+            # Verificar si el filtro es solo para SAAS
+            field = filter_item.get('field')
+            if field and field in report_def['available_filters']:
+                field_def = report_def['available_filters'][field]
+                if field_def.get('saas_only') and config['scope'] == 'TENANT':
+                    # Filtrar automáticamente filtros saas_only en reportes TENANT
+                    logger.warning(f"Filtro '{field}' es solo para SAAS, ignorando en reporte TENANT")
+                    continue
+            
             filter_errors = self._validate_filter(filter_item, report_def)
-            errors.extend(filter_errors)
+            if filter_errors:
+                errors.extend(filter_errors)
+            else:
+                valid_filters.append(filter_item)
+        
+        # Actualizar filtros con solo los válidos
+        config['filters'] = valid_filters
         
         # Validar agrupaciones
         for group_field in config.get('group_by', []):
             if group_field not in report_def['available_groupings']:
                 errors.append(f"Agrupación inválida: {group_field}")
         
-        # Validar ordenamiento
+        # Validar ordenamiento (filtrar inválidos en lugar de rechazar)
+        valid_sort = []
         for sort_item in config.get('sort', []):
             if sort_item['field'] not in report_def['available_sort_fields']:
-                errors.append(f"Campo de ordenamiento inválido: {sort_item['field']}")
+                logger.warning(f"Campo de ordenamiento inválido filtrado: {sort_item['field']}")
+                continue
             if sort_item['direction'] not in self.VALID_SORT_DIRECTIONS:
-                errors.append(f"Dirección de ordenamiento inválida: {sort_item['direction']}")
+                logger.warning(f"Dirección de ordenamiento inválida: {sort_item['direction']}, usando 'asc'")
+                sort_item['direction'] = 'asc'
+            valid_sort.append(sort_item)
+        
+        config['sort'] = valid_sort
+        
+        # Si no hay ordenamiento válido, usar uno por defecto
+        if not config['sort'] and report_def['available_sort_fields']:
+            default_sort_field = report_def['available_sort_fields'][0]
+            config['sort'] = [{'field': default_sort_field, 'direction': 'asc'}]
+            logger.info(f"Usando ordenamiento por defecto: {config['sort']}")
         
         # Validar formato
         if config['format'] not in self.VALID_FORMATS:

@@ -12,6 +12,7 @@ from .report_generator_service import ReportGeneratorService
 from .report_permission_service import ReportPermissionService
 from .groq_client import GroqClient, GroqAPIError
 from .voice_report_service import VoiceReportService
+from .manual_report_service import ManualReportService
 
 __all__ = [
     'ReportCatalogService',
@@ -26,4 +27,5 @@ __all__ = [
     'GroqClient',
     'GroqAPIError',
     'VoiceReportService',
+    'ManualReportService',
 ]

@@ -11,12 +11,14 @@ from datetime import datetime, timedelta, date
 from decimal import Decimal
 
 from django.db.models import (
-    Q, QuerySet, Count, Sum, Avg, Max, F, 
-    ExpressionWrapper, FloatField, IntegerField
+    Q, QuerySet, Count, Sum, Avg, Max, Min, F, Case, When,
+    ExpressionWrapper, FloatField, IntegerField, DecimalField, BooleanField,
+    DurationField
 )
 from django.db.models.functions import (
-    TruncDay, TruncWeek, TruncMonth, TruncQuarter, TruncYear
+    TruncDay, TruncWeek, TruncMonth, TruncQuarter, TruncYear, Extract
 )
+from django.utils import timezone
 from django.apps import apps
 
 from .report_catalog import ReportCatalogService
@@ -49,6 +51,13 @@ class ReportQueryBuilder:
         'User': 'auth.User',
         'SubscriptionPlan': 'saas.SubscriptionPlan',
         'Subscription': 'saas.Subscription',
+        # Nuevos datasources para reportes adicionales
+        'Branch': 'branches.Branch',
+        'AuditLog': 'audit.AuditLog',
+        'SecurityEvent': 'audit.SecurityEvent',
+        'FileResource': 'storage.FileResource',
+        'TenantRuleSet': 'loans.TenantRuleSet',
+        'CreditProductParameter': 'loans.CreditProductParameter',
     }
     
     # Mapeo de columnas a relaciones ForeignKey para optimización
@@ -67,6 +76,14 @@ class ReportQueryBuilder:
         # Productos crediticios
         'rule_set_name': 'rule_set',
         'rule_set_code': 'rule_set',
+        # AuditLog
+        'user_email': 'user',
+        'user_name': 'user',
+        'institution_name': 'institution',
+        # SecurityEvent
+        'resolved_by_name': 'resolved_by',
+        # FileResource
+        'uploaded_by_name': 'uploaded_by',
     }
     
     def __init__(self, tenant=None):
@@ -241,8 +258,19 @@ class ReportQueryBuilder:
             if field not in report_def['available_filters']:
                 continue
             
+            # Convertir filtros de rango (_min, _max, _start, _end) al campo base
+            actual_field = field
+            actual_operator = operator
+            
+            if field.endswith('_min') or field.endswith('_start'):
+                actual_field = field.rsplit('_', 1)[0]
+                actual_operator = 'gte'
+            elif field.endswith('_max') or field.endswith('_end'):
+                actual_field = field.rsplit('_', 1)[0]
+                actual_operator = 'lte'
+            
             # Construir Q object según operador
-            q_obj = self._build_filter_q(field, operator, value)
+            q_obj = self._build_filter_q(actual_field, actual_operator, value)
             if q_obj:
                 q_objects &= q_obj
         
@@ -260,6 +288,19 @@ class ReportQueryBuilder:
         Returns:
             Q object o None si el operador no es válido
         """
+        from django.utils import timezone
+        from datetime import datetime
+        
+        # Convertir fechas string a timezone-aware si es necesario
+        if self._is_date_field(field):
+            if isinstance(value, str):
+                value = self._parse_date_with_timezone(value)
+            elif isinstance(value, list):
+                value = [
+                    self._parse_date_with_timezone(v) if isinstance(v, str) else v
+                    for v in value
+                ]
+        
         operator_map = {
             'equals': lambda f, v: Q(**{f: v}),
             'not_equals': lambda f, v: ~Q(**{f: v}),
@@ -281,6 +322,45 @@ class ReportQueryBuilder:
             return None
         
         return operator_map[operator](field, value)
+    
+    def _is_date_field(self, field: str) -> bool:
+        """Verifica si un campo es de tipo fecha."""
+        date_fields = [
+            'created_at', 'updated_at', 'submitted_at', 'reviewed_at',
+            'approved_at', 'rejected_at', 'disbursed_at', 'verified_at',
+            'started_at', 'completed_at', 'birth_date', 'employment_start_date'
+        ]
+        return field in date_fields
+    
+    def _parse_date_with_timezone(self, date_str: str):
+        """
+        Convierte string de fecha a datetime con timezone.
+        
+        Args:
+            date_str: Fecha en formato YYYY-MM-DD o ISO
+        
+        Returns:
+            datetime con timezone o el valor original si falla
+        """
+        from django.utils import timezone
+        from datetime import datetime
+        
+        try:
+            # Intentar parsear como fecha simple (YYYY-MM-DD)
+            if len(date_str) == 10:  # YYYY-MM-DD
+                dt = datetime.strptime(date_str, '%Y-%m-%d')
+                # Hacer timezone-aware con la zona horaria actual
+                return timezone.make_aware(dt, timezone.get_current_timezone())
+            else:
+                # Intentar parsear como ISO datetime
+                dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                if timezone.is_naive(dt):
+                    return timezone.make_aware(dt, timezone.get_current_timezone())
+                return dt
+        except Exception as e:
+            # Si falla, retornar el valor original
+            logger.warning(f"No se pudo parsear fecha '{date_str}': {e}")
+            return date_str
     
     def _apply_date_range(
         self,
@@ -335,56 +415,104 @@ class ReportQueryBuilder:
         Returns:
             QuerySet optimizado
         """
-        # Mapeo extendido de columnas a relaciones ForeignKey
-        select_related_map = {
-            # Producto
-            'product_name': 'product',
-            'product_code': 'product',
-            'product_type': 'product',
-            
-            # Sucursal
-            'branch_name': 'branch',
-            'branch_city': 'branch',
-            
-            # Cliente
-            'client_name': 'client__user',
-            'client_document': 'client',
-            'client_email': 'client__user',
-            'client_phone': 'client',
-            
-            # Usuario asignado
-            'assigned_to_name': 'assigned_to',
-            
-            # Tenant (para reportes SAAS)
-            'tenant_name': 'institution',
-            'tenant_slug': 'institution',
-            
-            # Plan (para reportes SAAS)
-            'plan_name': 'subscription__plan',
-            
-            # Reglas
-            'rule_set_snapshot': 'rule_set_snapshot',
-            
-            # Usuario que creó/aprobó/rechazó
-            'created_by': 'created_by',
-            'approved_by': 'approved_by',
-            'reviewed_by': 'reviewed_by',
-        }
+        # Mapeo de columnas a relaciones ForeignKey según el datasource
+        datasource = report_def.get('datasource')
         
-        select_related_fields = set()
+        if datasource == 'LoanApplication':
+            select_related_map = {
+                # Producto
+                'product_name': 'product',
+                'product_code': 'product',
+                'product_type': 'product',
+                # Sucursal
+                'branch_name': 'branch',
+                'branch_city': 'branch',
+                # Cliente
+                'client_name': 'client__user',
+                'client_document': 'client',
+                'client_email': 'client__user',
+                'client_phone': 'client',
+                # Usuario asignado
+                'assigned_to_name': 'assigned_to',
+                # Reglas
+                'rule_set_snapshot': 'rule_set_snapshot',
+                # Usuario que creó/aprobó/rechazó
+                'created_by': 'created_by',
+                'approved_by': 'approved_by',
+                'reviewed_by': 'reviewed_by',
+            }
+            base_relations = ['product', 'client', 'branch']
+        elif datasource == 'CreditProduct':
+            select_related_map = {
+                # Tipo de producto
+                'product_type': 'product_type',
+                # Conjunto de reglas
+                'rule_set_name': 'rule_set',
+                'rule_set_code': 'rule_set',
+            }
+            base_relations = ['rule_set', 'product_type']
+        elif datasource == 'Branch':
+            select_related_map = {}
+            base_relations = []
+            # Branch no tiene ForeignKeys críticos, pero tiene ManyToMany
+            # Usar prefetch_related para assigned_users y assigned_loan_applications si es necesario
+        elif datasource == 'AuditLog':
+            select_related_map = {
+                'user_email': 'user',
+                'user_name': 'user',
+                'institution_name': 'institution',
+            }
+            base_relations = ['user', 'institution']
+        elif datasource == 'SecurityEvent':
+            select_related_map = {
+                'user_email': 'user',
+                'resolved_by_name': 'resolved_by',
+            }
+            base_relations = ['user', 'resolved_by']
+        elif datasource == 'FileResource':
+            select_related_map = {
+                'institution_name': 'tenant',
+                'uploaded_by_name': 'uploaded_by',
+            }
+            base_relations = ['tenant', 'uploaded_by']
+        elif datasource == 'TenantRuleSet':
+            select_related_map = {}
+            base_relations = []
+            # TenantRuleSet tiene reverse relations, usar prefetch si es necesario
+        elif datasource == 'CreditProductParameter':
+            select_related_map = {
+                'rule_set_name': 'rule_set',
+            }
+            base_relations = ['rule_set']
+        elif datasource == 'SubscriptionPlan':
+            select_related_map = {}
+            base_relations = []
+        elif datasource == 'Client':
+            select_related_map = {
+                # Usuario asociado
+                'full_name': 'user',
+                'first_name': 'user',
+                'last_name': 'user',
+                'email': 'user',
+                # Usuario que verificó
+                'verified_by_name': 'verified_by',
+            }
+            base_relations = ['user', 'verified_by']
+        else:
+            select_related_map = {
+                # Tenant (para reportes SAAS)
+                'tenant_name': 'institution',
+                'tenant_slug': 'institution',
+                # Plan (para reportes SAAS)
+                'plan_name': 'subscription__plan',
+            }
+            base_relations = []
+        
+        select_related_fields = set(base_relations)
         
         for column in columns:
             if column in select_related_map:
                 select_related_fields.add(select_related_map[column])
-        
-        # Agregar relaciones comunes para reportes de créditos
-        datasource = report_def.get('datasource')
-        if datasource == 'LoanApplication':
-            # Siempre incluir product y client para reportes de créditos
-            select_related_fields.update(['product', 'client', 'branch'])
-        elif datasource == 'CreditProduct':
-            # Para reportes de productos crediticios, incluir rule_set y product_type
-            select_related_fields.update(['rule_set', 'product_type', 'selected_parameter'])
         
         if select_related_fields:
             queryset = queryset.select_related(*select_related_fields)
@@ -446,6 +574,7 @@ class ReportQueryBuilder:
             # === SUCURSAL ===
             'branch_name': 'branch__name',
             'branch_city': 'branch__city',
+            'branch_address': 'address',
             
             # === CLIENTE ===
             'client_name': 'client__user__first_name',  # Se concatena en annotate
@@ -487,6 +616,10 @@ class ReportQueryBuilder:
             'created_by_name': 'created_by__first_name',  # Se concatena en annotate
             'updated_by_name': 'updated_by__first_name',  # Se concatena en annotate
             'verified_by_name': 'verified_by__first_name',  # Se concatena en annotate
+            'user_name': 'user__first_name',
+            'user_email': 'user__email',
+            'resolved_by_name': 'resolved_by__first_name',
+            'uploaded_by_name': 'uploaded_by__first_name',
             
             # === SOLICITUD ===
             'application_number': 'application_number',
@@ -516,6 +649,10 @@ class ReportQueryBuilder:
             'disbursed_at': 'disbursed_at',
             'updated_at': 'updated_at',
             'verified_at': 'verified_at',
+            'timestamp': 'timestamp',
+            'started_at': 'started_at',
+            'completed_at': 'completed_at',
+            'resolved_at': 'resolved_at',
             
             # === ESTADOS ===
             'kyc_status': 'kyc_status',
@@ -524,6 +661,7 @@ class ReportQueryBuilder:
             'tenant_name': 'institution__name',
             'tenant_slug': 'institution__slug',
             'institution_type': 'institution_type',
+            'institution_name': 'institution__name',
             
             # === PLAN ===
             'plan_name': 'subscription__plan__name',
@@ -546,6 +684,81 @@ class ReportQueryBuilder:
             'description': 'description',
             'target_audience': 'target_audience',
             'benefits': 'benefits',
+            
+            # === AUDIT LOG ===
+            'action': 'action',
+            'action_display': 'action',
+            'resource_type': 'resource_type',
+            'resource_id': 'resource_id',
+            'severity': 'severity',
+            'ip_address': 'ip_address',
+            'user_agent': 'user_agent',
+            
+            # === SECURITY EVENT ===
+            'event_type': 'event_type',
+            'event_type_display': 'event_type',
+            'email_attempted': 'email',
+            'resolved': 'resolved',
+            
+            # === FILE RESOURCE ===
+            'resource_type': 'resource_type',
+            'category': 'category',
+            
+            # === TENANT RULE SET ===
+            'rule_set_description': 'description',
+            'is_default': 'is_default',
+            
+            # === CREDIT PRODUCT PARAMETER ===
+            'min_amount': 'min_amount',
+            'max_amount': 'max_amount',
+            'default_amount': 'default_amount',
+            'min_term_months': 'min_term_months',
+            'max_term_months': 'max_term_months',
+            'default_term_months': 'default_term_months',
+            'min_interest_rate': 'min_interest_rate',
+            'max_interest_rate': 'max_interest_rate',
+            'default_interest_rate': 'default_interest_rate',
+            'commission_rate_min': 'commission_rate_min',
+            'commission_rate_max': 'commission_rate_max',
+            'requires_guarantor': 'requires_guarantor',
+            'requires_collateral': 'requires_collateral',
+            
+            # === SUBSCRIPTION PLAN ===
+            'name': 'name',
+            'slug': 'slug',
+            'price': 'price',
+            'billing_cycle': 'billing_cycle',
+            'billing_cycle_display': 'billing_cycle',
+            'trial_days': 'trial_days',
+            'setup_fee': 'setup_fee',
+            'max_users': 'max_users',
+            'max_branches': 'max_branches',
+            'max_products': 'max_products',
+            'max_loans_per_month': 'max_loans_per_month',
+            'max_storage_gb': 'max_storage_gb',
+            'has_ai_scoring': 'has_ai_scoring',
+            'has_workflows': 'has_workflows',
+            'has_reporting': 'has_reporting',
+            'has_mobile_app': 'has_mobile_app',
+            'has_api_access': 'has_api_access',
+            'has_white_label': 'has_white_label',
+            'has_priority_support': 'has_priority_support',
+            'has_custom_integrations': 'has_custom_integrations',
+            'is_featured': 'is_featured',
+            
+            # === SUBSCRIPTION (adicionales) ===
+            'institution_slug': 'institution__slug',
+            'status_display': 'status',
+            'payment_status_display': 'payment_status',
+            'start_date': 'start_date',
+            'end_date': 'end_date',
+            'trial_end_date': 'trial_end_date',
+            'next_billing_date': 'next_billing_date',
+            'current_users': 'current_users',
+            'current_branches': 'current_branches',
+            'current_products': 'current_products',
+            'current_month_loans': 'current_month_loans',
+            'current_storage_gb': 'current_storage_gb',
             
             # === CAMPOS TEMPORALES (ya anotados, mantener nombre) ===
             'day': 'day',
@@ -669,6 +882,108 @@ class ReportQueryBuilder:
             'current_users': Sum('current_users'),
             'current_branches': Sum('current_branches'),
             'days_active': Avg('days_active'),
+            
+            # ===== AGREGACIONES PARA BRANCH (Sucursales) =====
+            'assigned_users_count': Count('assigned_users'),
+            'total_clients': Count('assigned_loan_applications__client', distinct=True),
+            'active_clients': Count('assigned_loan_applications__client', 
+                                   filter=Q(assigned_loan_applications__status__in=['APPROVED', 'DISBURSED']), 
+                                   distinct=True),
+            'avg_processing_days': Avg(
+                ExpressionWrapper(
+                    Extract(F('approved_at') - F('created_at'), 'epoch') / 86400.0,
+                    output_field=FloatField()
+                )
+            ),
+            
+            # ===== AGREGACIONES PARA BRANCH BY CITY =====
+            'branch_count': Count('id'),
+            'active_branches': Count('id', filter=Q(is_active=True)),
+            'inactive_branches': Count('id', filter=Q(is_active=False)),
+            'total_users_assigned': Count('assigned_users'),
+            
+            # ===== AGREGACIONES PARA AUDIT LOG =====
+            'total_actions': Count('id'),
+            'actions_this_month': Count('id', filter=Q(timestamp__gte=timezone.now() - timedelta(days=30))),
+            
+            # ===== AGREGACIONES PARA SECURITY EVENT =====
+            'total_events': Count('id'),
+            'resolved_events': Count('id', filter=Q(resolved=True)),
+            'unresolved_events': Count('id', filter=Q(resolved=False)),
+            
+            # ===== AGREGACIONES PARA FILE RESOURCE =====
+            'total_files': Count('id'),
+            'total_size_gb': Sum(ExpressionWrapper(F('size') / (1024.0 * 1024.0 * 1024.0), output_field=FloatField())),
+            'active_files': Count('id', filter=Q(status='active')),
+            'archived_files': Count('id', filter=Q(status='archived')),
+            'deleted_files': Count('id', filter=Q(status='deleted')),
+            'avg_file_size_mb': Avg(ExpressionWrapper(F('size') / (1024.0 * 1024.0), output_field=FloatField())),
+            'oldest_file_date': Min('created_at'),
+            'newest_file_date': Max('created_at'),
+            
+            # ===== AGREGACIONES PARA TENANT RULE SET =====
+            'eligibility_rules_count': Count('eligibility_rules'),
+            'parameters_count': Count('product_parameters'),
+            'thresholds_count': Count('decision_thresholds'),
+            
+            # ===== AGREGACIONES PARA SUBSCRIPTION =====
+            'users_percentage': ExpressionWrapper(
+                (F('current_users') * 100.0) / F('plan__max_users'),
+                output_field=FloatField()
+            ),
+            'branches_percentage': ExpressionWrapper(
+                (F('current_branches') * 100.0) / F('plan__max_branches'),
+                output_field=FloatField()
+            ),
+            'products_percentage': ExpressionWrapper(
+                (F('current_products') * 100.0) / F('plan__max_products'),
+                output_field=FloatField()
+            ),
+            'loans_percentage': ExpressionWrapper(
+                (F('current_month_loans') * 100.0) / F('plan__max_loans_per_month'),
+                output_field=FloatField()
+            ),
+            'storage_percentage': ExpressionWrapper(
+                (F('current_storage_gb') * 100.0) / F('plan__max_storage_gb'),
+                output_field=FloatField()
+            ),
+            'days_until_renewal': ExpressionWrapper(
+                Extract(F('next_billing_date') - timezone.now().date(), 'epoch') / 86400.0,
+                output_field=FloatField()
+            ),
+            'monthly_revenue': Case(
+                When(plan__billing_cycle='MONTHLY', then=F('plan__price')),
+                When(plan__billing_cycle='QUARTERLY', then=ExpressionWrapper(F('plan__price') / 3.0, output_field=DecimalField())),
+                When(plan__billing_cycle='ANNUAL', then=ExpressionWrapper(F('plan__price') / 12.0, output_field=DecimalField())),
+                default=F('plan__price'),
+                output_field=DecimalField()
+            ),
+            
+            # ===== AGREGACIONES PARA SUBSCRIPTION PLAN =====
+            'price_per_month': Case(
+                When(billing_cycle='MONTHLY', then=F('price')),
+                When(billing_cycle='QUARTERLY', then=ExpressionWrapper(F('price') / 3.0, output_field=DecimalField())),
+                When(billing_cycle='ANNUAL', then=ExpressionWrapper(F('price') / 12.0, output_field=DecimalField())),
+                default=F('price'),
+                output_field=DecimalField()
+            ),
+            
+            # ===== AGREGACIONES PARA ANALYTICS =====
+            'conversion_rate': ExpressionWrapper(
+                (Count('id', filter=Q(status='DISBURSED')) * 100.0) / Count('id'),
+                output_field=FloatField()
+            ),
+            'drop_off_count': Count('id', filter=Q(status__in=['REJECTED', 'CANCELLED'])),
+            'drop_off_rate': ExpressionWrapper(
+                (Count('id', filter=Q(status__in=['REJECTED', 'CANCELLED'])) * 100.0) / Count('id'),
+                output_field=FloatField()
+            ),
+            'avg_time_to_next_stage_days': Avg(
+                ExpressionWrapper(
+                    Extract(F('updated_at') - F('created_at'), 'epoch') / 86400.0,
+                    output_field=FloatField()
+                )
+            ),
         }
         
         # Agregar las agregaciones solicitadas
@@ -680,25 +995,21 @@ class ReportQueryBuilder:
         
         # Campos que requieren anotaciones adicionales
         if 'days_since_submission' in columns:
-            from django.utils import timezone
             aggregations['days_since_submission'] = ExpressionWrapper(
-                (timezone.now() - F('submitted_at')).total_seconds() / 86400,
-                output_field=IntegerField()
+                Extract(timezone.now() - F('submitted_at'), 'epoch') / 86400.0,
+                output_field=FloatField()
             )
         
         if 'days_since_disbursement' in columns:
-            from django.utils import timezone
             aggregations['days_since_disbursement'] = ExpressionWrapper(
-                (timezone.now() - F('disbursed_at')).total_seconds() / 86400,
-                output_field=IntegerField()
+                Extract(timezone.now() - F('disbursed_at'), 'epoch') / 86400.0,
+                output_field=FloatField()
             )
         
         if 'latest_loan_date' in columns:
-            from django.db.models import Max
             aggregations['latest_loan_date'] = Max('approved_at')
         
         if 'last_user_created_at' in columns:
-            from django.db.models import Max
             aggregations['last_user_created_at'] = Max('created_at')
         
         # ===== CAMPOS NO AGREGADOS (campos directos de ForeignKey) =====

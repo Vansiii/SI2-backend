@@ -36,6 +36,7 @@ from api.reports.services import (
     ReportCatalogService,
     ReportGeneratorService,
     VoiceReportService,
+    ManualReportService,
     GroqAPIError
 )
 from api.reports.permissions import (
@@ -58,8 +59,9 @@ class ReportCatalogViewSet(viewsets.ViewSet):
     ViewSet para catálogo de reportes disponibles.
     
     Endpoints:
-    - GET /api/reports/catalog/ - Lista reportes disponibles
-    - GET /api/reports/catalog/definition/{scope}/{category}/{report_type}/ - Detalle de reporte
+    - GET /api/reports/catalog/ - Lista reportes disponibles (enriquecido con UI config)
+    - GET /api/reports/catalog/{report_type}/ - Metadatos completos de un reporte
+    - GET /api/reports/catalog/definition/{scope}/{category}/{report_type}/ - Definición base (legacy)
     """
     
     permission_classes = [IsAuthenticated, CanViewReportCatalog]
@@ -68,9 +70,29 @@ class ReportCatalogViewSet(viewsets.ViewSet):
     def list(self, request):
         """
         Lista reportes disponibles según scope y roles del usuario.
+        Retorna catálogo enriquecido con configuración de UI y gráficos.
         
         Query params:
         - scope: TENANT o SAAS (opcional, detecta automáticamente)
+        
+        Response:
+        {
+            "scope": "TENANT",
+            "categories": {
+                "CREDITS": [
+                    {
+                        "type": "loans_by_status",
+                        "name": "Créditos por Estado",
+                        "description": "...",
+                        "chart_config": {
+                            "default_chart": "donut",
+                            "available_charts": ["donut", "bar", "pie"],
+                            "chart_config": {...}
+                        }
+                    }
+                ]
+            }
+        }
         """
         # Determinar scope
         if request.user.is_superuser or (hasattr(request.user, 'profile') and request.user.profile.is_saas_admin()):
@@ -89,21 +111,107 @@ class ReportCatalogViewSet(viewsets.ViewSet):
         # Obtener roles del usuario (simplificado por ahora)
         user_roles = ['admin', 'manager', 'analyst']
         
-        # Obtener reportes disponibles
+        # Obtener catálogo enriquecido
+        manual_service = ManualReportService(
+            user=request.user,
+            tenant=getattr(request, 'tenant', None)
+        )
+        
+        enriched_catalog = manual_service.get_enriched_catalog(scope, user_roles)
+        
+        return Response({
+            'scope': scope,
+            'categories': enriched_catalog
+        })
+    
+    @action(detail=False, methods=['get'], url_path='(?P<report_type>[^/.]+)')
+    def metadata(self, request, report_type=None):
+        """
+        Obtiene metadatos completos de un reporte para construir el formulario.
+        
+        URL: /api/reports/catalog/{report_type}/
+        Query params:
+        - scope: TENANT o SAAS (opcional, detecta automáticamente)
+        
+        Response:
+        {
+            "scope": "TENANT",
+            "category": "CREDITS",
+            "report_type": "loans_by_status",
+            "name": "Créditos por Estado",
+            "description": "...",
+            "filters": [
+                {
+                    "field": "status",
+                    "label": "Estado",
+                    "type": "choice",
+                    "operators": ["in", "not_in"],
+                    "options": [...],
+                    "ui_component": "multiselect",
+                    "ui_props": {...}
+                }
+            ],
+            "columns": [...],
+            "groupings": [...],
+            "sort_fields": [...],
+            "formats": ["csv", "xlsx", "pdf"],
+            "chart_config": {...},
+            "default_config": {...}
+        }
+        """
+        # Determinar scope
+        if request.user.is_superuser or (hasattr(request.user, 'profile') and request.user.profile.is_saas_admin()):
+            scope = request.query_params.get('scope', 'TENANT')
+        else:
+            scope = 'TENANT'
+        
+        # Validar acceso a scope SAAS
+        if scope == 'SAAS' and not request.user.is_superuser:
+            if not (hasattr(request.user, 'profile') and request.user.profile.is_saas_admin()):
+                return Response(
+                    {'error': 'No tiene acceso a reportes SAAS'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Buscar el reporte en el catálogo para obtener category
         catalog_service = ReportCatalogService()
+        user_roles = ['admin', 'manager', 'analyst']
         available_reports = catalog_service.get_available_reports(scope, user_roles)
         
-        serializer = ReportCatalogSerializer({
-            'scope': scope,
-            'categories': available_reports
-        })
+        category = None
+        for cat, reports in available_reports.items():
+            for report in reports:
+                if report['type'] == report_type:
+                    category = cat
+                    break
+            if category:
+                break
         
-        return Response(serializer.data)
+        if not category:
+            return Response(
+                {'error': 'Reporte no encontrado'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Obtener metadatos enriquecidos
+        manual_service = ManualReportService(
+            user=request.user,
+            tenant=getattr(request, 'tenant', None)
+        )
+        
+        try:
+            metadata = manual_service.get_report_metadata(scope, category, report_type)
+            return Response(metadata)
+        except ValueError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
     
     @action(detail=False, methods=['get'], url_path='definition/(?P<scope>[^/.]+)/(?P<category>[^/.]+)/(?P<report_type>[^/.]+)')
     def definition(self, request, scope=None, category=None, report_type=None):
         """
-        Obtiene definición completa de un reporte específico.
+        Obtiene definición completa de un reporte específico (legacy endpoint).
         
         URL: /api/reports/catalog/definition/{scope}/{category}/{report_type}/
         """
@@ -240,44 +348,99 @@ class ReportGenerationViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def preview(self, request):
         """
-        Genera vista previa paginada del reporte.
+        Genera vista previa paginada del reporte con configuración de gráficos.
         
         POST /api/reports/generate/preview/
         Body: {
-            "config": {...},
+            "scope": "TENANT",
+            "category": "CREDITS",
+            "report_type": "loans_by_status",
+            "config": {
+                "filters": [...],
+                "columns": [...],
+                "group_by": [...],
+                "sort": [...],
+                "chart_type": "donut"
+            },
             "page": 1,
             "page_size": 50
         }
-        """
-        serializer = ReportPreviewRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
         
-        config = serializer.validated_data['config']
-        page = serializer.validated_data['page']
-        page_size = serializer.validated_data['page_size']
+        Response:
+        {
+            "data": [...],
+            "pagination": {
+                "page": 1,
+                "page_size": 50,
+                "total_count": 150,
+                "total_pages": 3,
+                "has_next": true,
+                "has_previous": false
+            },
+            "chart_config": {
+                "type": "donut",
+                "data_key": "total_applications",
+                "name_key": "status",
+                "colors": [...]
+            },
+            "summary": {
+                "total_records": 150,
+                "total_applications": 1250,
+                "approval_rate": 67.5
+            },
+            "columns": [...]
+        }
+        """
+        # Extraer parámetros
+        scope = request.data.get('scope', 'TENANT')
+        category = request.data.get('category')
+        report_type = request.data.get('report_type')
+        config = request.data.get('config', {})
+        page = request.data.get('page', 1)
+        page_size = request.data.get('page_size', 50)
+        
+        # Validaciones básicas
+        if not category or not report_type:
+            return Response(
+                {'error': 'category y report_type son requeridos'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Validar acceso a scope
-        if config['scope'] == 'SAAS' and not request.user.is_superuser:
+        if scope == 'SAAS' and not request.user.is_superuser:
             if not (hasattr(request.user, 'profile') and request.user.profile.is_saas_admin()):
                 return Response(
                     {'error': 'No tiene acceso a reportes SAAS'},
                     status=status.HTTP_403_FORBIDDEN
                 )
         
-        # Generar vista previa
-        generator = ReportGeneratorService(
+        # Generar vista previa con servicio manual
+        manual_service = ManualReportService(
             user=request.user,
-            tenant=getattr(request, 'tenant', None) if config['scope'] == 'TENANT' else None
+            tenant=getattr(request, 'tenant', None) if scope == 'TENANT' else None
         )
         
         try:
-            preview_data = generator.preview_report(config, page, page_size)
+            preview_data = manual_service.preview_report_with_chart(
+                scope=scope,
+                category=category,
+                report_type=report_type,
+                config=config,
+                page=page,
+                page_size=page_size
+            )
             return Response(preview_data)
         
-        except Exception as e:
+        except ValueError as e:
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error en preview: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Error al generar vista previa: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
     def create(self, request):

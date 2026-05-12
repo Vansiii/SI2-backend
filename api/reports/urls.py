@@ -10,6 +10,7 @@ from .views import (
     GeneratedReportViewSet,
     VoiceReportViewSet
 )
+from .views_manual import ManualReportViewSet
 
 app_name = 'reports'
 
@@ -22,4 +23,12 @@ router.register(r'voice', VoiceReportViewSet, basename='voice-report')
 
 urlpatterns = [
     path('', include(router.urls)),
+    
+    # Endpoints para reportes manuales independientes
+    path('manual/<str:report_type>/', ManualReportViewSet.as_view({'get': 'list'}), name='manual-report'),
+    path('manual/export/csv/', ManualReportViewSet.as_view({'post': 'export_csv'}), name='manual-export-csv'),
+    path('manual/export/xlsx/', ManualReportViewSet.as_view({'post': 'export_xlsx'}), name='manual-export-xlsx'),
+    path('manual/export/pdf/', ManualReportViewSet.as_view({'post': 'export_pdf'}), name='manual-export-pdf'),
+    path('manual-available/', ManualReportViewSet.as_view({'get': 'available'}), name='manual-available'),
+    path('manual-filter-options/', ManualReportViewSet.as_view({'get': 'filter_options'}), name='manual-filter-options'),
 ]

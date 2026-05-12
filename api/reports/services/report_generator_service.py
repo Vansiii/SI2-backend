@@ -173,13 +173,25 @@ class ReportGeneratorService:
             # 8. Exportar a archivo
             logger.info(f"Exportando a formato {config['format']}...")
             
+            # Obtener configuración del gráfico si existe
+            chart_config = None
+            if config.get('chart_type'):
+                # Usar el servicio manual para obtener la configuración del gráfico
+                from .manual_report_service import ManualReportService
+                manual_service = ManualReportService(user=self.user, tenant=self.tenant)
+                chart_config = manual_service._build_chart_config(
+                    config['report_type'],
+                    config['chart_type'],
+                    config
+                )
+            
             # Preparar metadatos para el reporte
             report_metadata = {
                 'report_type': config['report_type'],
                 'user_name': f"{self.user.first_name} {self.user.last_name}".strip() or self.user.username,
                 'tenant_name': self.tenant.name if self.tenant else None,
                 'filters': config.get('filters', {}),
-                'chart_image': chart_image,
+                'chart_config': chart_config,  # Pasar configuración del gráfico
                 'visualization': viz_config
             }
             
@@ -420,11 +432,12 @@ class ReportGeneratorService:
             'client_document': 'client__document_number',
             'client_email': 'client__user__email',
             'client_phone': 'client__mobile_phone',
-            'full_name': 'user__first_name',  # Necesita concatenación
+            'full_name': 'user__first_name',  # Volverá a concatenación manual
             'first_name': 'user__first_name',
             'last_name': 'user__last_name',
-            'email': 'user__email',
+            'email': 'user__email',  # Campo directo
             'phone': 'mobile_phone',
+            'mobile_phone': 'mobile_phone',
             'document_number': 'document_number',
             'document_type': 'document_type',
             'document_extension': 'document_extension',
@@ -454,7 +467,7 @@ class ReportGeneratorService:
             'approved_by_name': 'approved_by__first_name',  # Necesita concatenación
             'created_by_name': 'created_by__first_name',  # Necesita concatenación
             'updated_by_name': 'updated_by__first_name',  # Necesita concatenación
-            'verified_by_name': 'verified_by__first_name',  # Necesita concatenación
+            'verified_by_name': 'verified_by__first_name',  # Volverá a concatenación manual
             
             # === SOLICITUD ===
             'application_number': 'application_number',
@@ -542,13 +555,13 @@ class ReportGeneratorService:
         # Campos que necesitan concatenación de nombres
         concatenation_fields = {
             'client_name': ('client__user__first_name', 'client__user__last_name'),
-            'full_name': ('user__first_name', 'user__last_name'),
+            'full_name': ('user__first_name', 'user__last_name'),  # Restaurado
             'assigned_to_name': ('assigned_to__first_name', 'assigned_to__last_name'),
             'reviewed_by_name': ('reviewed_by__first_name', 'reviewed_by__last_name'),
             'approved_by_name': ('approved_by__first_name', 'approved_by__last_name'),
             'created_by_name': ('created_by__first_name', 'created_by__last_name'),
             'updated_by_name': ('updated_by__first_name', 'updated_by__last_name'),
-            'verified_by_name': ('verified_by__first_name', 'verified_by__last_name'),
+            'verified_by_name': ('verified_by__first_name', 'verified_by__last_name'),  # Restaurado
         }
         
         result = []

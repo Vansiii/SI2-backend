@@ -358,12 +358,42 @@ class VoiceReportService:
         Returns:
             Código del reporte o el valor original si ya es un código válido
         """
+        # Diccionario de alias comunes para mapear a códigos correctos
+        REPORT_ALIASES = {
+            'TENANT': {
+                'PRODUCTS': {
+                    'credit_products': 'credit_products_catalog',
+                    'catalog_of_products': 'credit_products_catalog',
+                    'product_catalog': 'credit_products_catalog',
+                    'productos_crediticios': 'credit_products_catalog',
+                    'productos': 'credit_products_catalog',
+                    'catalogo_productos': 'credit_products_catalog',
+                    'catalogo_de_productos': 'credit_products_catalog',
+                },
+                'CREDITS': {
+                    'creditos': 'loans_by_status',
+                    'solicitudes': 'loans_by_status',
+                    'prestamos': 'loans_by_status',
+                },
+                'CUSTOMERS': {
+                    'clientes': 'customers_by_status',
+                },
+            }
+        }
+        
         # Obtener todos los reportes de la categoría
         catalog = self.catalog_service.CATALOG.get(scope, {}).get(category, {})
         
         # Si el valor ya es un código válido, devolverlo
         if report_name_or_code in catalog:
             return report_name_or_code
+        
+        # Buscar en alias
+        aliases = REPORT_ALIASES.get(scope, {}).get(category, {})
+        if report_name_or_code in aliases:
+            mapped_code = aliases[report_name_or_code]
+            logger.info(f"Mapeando alias '{report_name_or_code}' a código '{mapped_code}'")
+            return mapped_code
         
         # Buscar por nombre
         for report_code, report_def in catalog.items():

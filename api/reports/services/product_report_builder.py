@@ -6,7 +6,7 @@ crediticios, incluyendo sus parámetros desde CreditProductParameter.
 """
 import logging
 from typing import Dict, List, Any
-from django.db.models import F, Q, Value, CharField
+from django.db.models import F, Q, Value, CharField, DecimalField, IntegerField, BooleanField
 from django.db.models.functions import Coalesce
 
 logger = logging.getLogger(__name__)
@@ -33,86 +33,129 @@ class ProductReportBuilder:
         Returns:
             QuerySet anotado con campos de parámetros
         """
-        # Obtener parámetros desde rule_set__creditproductparameter
-        # Nota: CreditProductParameter tiene una relación OneToOne con TenantRuleSet
+        # Obtener parámetros desde rule_set__product_parameters
+        # Nota: CreditProductParameter tiene una relación ForeignKey con TenantRuleSet
+        # usando related_name='product_parameters'
         
         queryset = queryset.annotate(
-            # Parámetros de montos
+            # Parámetros de montos (DecimalField)
             min_amount=Coalesce(
-                F('rule_set__creditproductparameter__min_amount'),
-                Value(0)
+                F('rule_set__product_parameters__min_amount'),
+                Value(0),
+                output_field=DecimalField()
             ),
             max_amount=Coalesce(
-                F('rule_set__creditproductparameter__max_amount'),
-                Value(0)
-            ),
-            default_amount=Coalesce(
-                F('rule_set__creditproductparameter__default_amount'),
-                Value(0)
+                F('rule_set__product_parameters__max_amount'),
+                Value(0),
+                output_field=DecimalField()
             ),
             
-            # Parámetros de plazos
+            # Parámetros de plazos (IntegerField)
             min_term_months=Coalesce(
-                F('rule_set__creditproductparameter__min_term_months'),
-                Value(0)
+                F('rule_set__product_parameters__min_term_months'),
+                Value(0),
+                output_field=IntegerField()
             ),
             max_term_months=Coalesce(
-                F('rule_set__creditproductparameter__max_term_months'),
-                Value(0)
-            ),
-            default_term_months=Coalesce(
-                F('rule_set__creditproductparameter__default_term_months'),
-                Value(0)
+                F('rule_set__product_parameters__max_term_months'),
+                Value(0),
+                output_field=IntegerField()
             ),
             
-            # Tasas de interés
+            # Tasas de interés (DecimalField)
             min_interest_rate=Coalesce(
-                F('rule_set__creditproductparameter__min_interest_rate'),
-                Value(0.0)
+                F('rule_set__product_parameters__min_interest_rate'),
+                Value(0.0),
+                output_field=DecimalField()
             ),
             max_interest_rate=Coalesce(
-                F('rule_set__creditproductparameter__max_interest_rate'),
-                Value(0.0)
-            ),
-            default_interest_rate=Coalesce(
-                F('rule_set__creditproductparameter__default_interest_rate'),
-                Value(0.0)
+                F('rule_set__product_parameters__max_interest_rate'),
+                Value(0.0),
+                output_field=DecimalField()
             ),
             interest_rate_type_value=Coalesce(
-                F('rule_set__creditproductparameter__interest_rate_type'),
-                Value('FIXED', output_field=CharField())
+                F('rule_set__product_parameters__interest_type'),
+                Value('FIXED'),
+                output_field=CharField()
             ),
             
-            # Comisiones y cargos
-            origination_fee_percentage=Coalesce(
-                F('rule_set__creditproductparameter__origination_fee_percentage'),
-                Value(0.0)
+            # Comisiones (DecimalField)
+            commission_rate_min=Coalesce(
+                F('rule_set__product_parameters__commission_rate_min'),
+                Value(0.0),
+                output_field=DecimalField()
             ),
-            origination_fee_fixed=Coalesce(
-                F('rule_set__creditproductparameter__origination_fee_fixed'),
-                Value(0.0)
-            ),
-            late_payment_fee_percentage=Coalesce(
-                F('rule_set__creditproductparameter__late_payment_fee_percentage'),
-                Value(0.0)
-            ),
-            late_payment_fee_fixed=Coalesce(
-                F('rule_set__creditproductparameter__late_payment_fee_fixed'),
-                Value(0.0)
-            ),
-            prepayment_penalty_percentage=Coalesce(
-                F('rule_set__creditproductparameter__prepayment_penalty_percentage'),
-                Value(0.0)
+            commission_rate_max=Coalesce(
+                F('rule_set__product_parameters__commission_rate_max'),
+                Value(0.0),
+                output_field=DecimalField()
             ),
             
-            # Información del conjunto de reglas
+            # Seguros (DecimalField)
+            insurance_rate_min=Coalesce(
+                F('rule_set__product_parameters__insurance_rate_min'),
+                Value(0.0),
+                output_field=DecimalField()
+            ),
+            insurance_rate_max=Coalesce(
+                F('rule_set__product_parameters__insurance_rate_max'),
+                Value(0.0),
+                output_field=DecimalField()
+            ),
+            
+            # Penalidad por pago anticipado (DecimalField)
+            early_payment_penalty_min=Coalesce(
+                F('rule_set__product_parameters__early_payment_penalty_min'),
+                Value(0.0),
+                output_field=DecimalField()
+            ),
+            early_payment_penalty_max=Coalesce(
+                F('rule_set__product_parameters__early_payment_penalty_max'),
+                Value(0.0),
+                output_field=DecimalField()
+            ),
+            
+            # Período de gracia (IntegerField)
+            grace_period_months_min=Coalesce(
+                F('rule_set__product_parameters__grace_period_months_min'),
+                Value(0),
+                output_field=IntegerField()
+            ),
+            grace_period_months_max=Coalesce(
+                F('rule_set__product_parameters__grace_period_months_max'),
+                Value(0),
+                output_field=IntegerField()
+            ),
+            
+            # Financiamiento (DecimalField)
+            max_financing_percentage=Coalesce(
+                F('rule_set__product_parameters__max_financing_percentage'),
+                Value(100.0),
+                output_field=DecimalField()
+            ),
+            
+            # Garantías (BooleanField)
+            requires_guarantor=Coalesce(
+                F('rule_set__product_parameters__requires_guarantor'),
+                Value(False),
+                output_field=BooleanField()
+            ),
+            requires_collateral=Coalesce(
+                F('rule_set__product_parameters__requires_collateral'),
+                Value(False),
+                output_field=BooleanField()
+            ),
+            
+            # Información del conjunto de reglas (CharField)
             rule_set_name_value=Coalesce(
                 F('rule_set__name'),
-                Value('Sin conjunto de reglas', output_field=CharField())
+                Value('Sin conjunto de reglas'),
+                output_field=CharField()
             ),
             rule_set_code_value=Coalesce(
-                F('rule_set__code'),
-                Value('N/A', output_field=CharField())
+                F('rule_set__version'),
+                Value('N/A'),
+                output_field=CharField()
             ),
         )
         
@@ -133,11 +176,12 @@ class ProductReportBuilder:
         # Anotar con parámetros
         queryset = ProductReportBuilder.annotate_product_parameters(queryset)
         
-        # Optimizar con select_related
+        # Optimizar con select_related y prefetch_related
         queryset = queryset.select_related(
             'product_type',
-            'rule_set',
-            'rule_set__creditproductparameter'
+            'rule_set'
+        ).prefetch_related(
+            'rule_set__product_parameters'
         )
         
         return queryset
@@ -166,25 +210,38 @@ class ProductReportBuilder:
             # Parámetros de montos (campos anotados)
             'min_amount': 'min_amount',
             'max_amount': 'max_amount',
-            'default_amount': 'default_amount',
             
             # Parámetros de plazos (campos anotados)
             'min_term_months': 'min_term_months',
             'max_term_months': 'max_term_months',
-            'default_term_months': 'default_term_months',
             
             # Tasas de interés (campos anotados)
             'min_interest_rate': 'min_interest_rate',
             'max_interest_rate': 'max_interest_rate',
-            'default_interest_rate': 'default_interest_rate',
             'interest_rate_type': 'interest_rate_type_value',
             
-            # Comisiones y cargos (campos anotados)
-            'origination_fee_percentage': 'origination_fee_percentage',
-            'origination_fee_fixed': 'origination_fee_fixed',
-            'late_payment_fee_percentage': 'late_payment_fee_percentage',
-            'late_payment_fee_fixed': 'late_payment_fee_fixed',
-            'prepayment_penalty_percentage': 'prepayment_penalty_percentage',
+            # Comisiones (campos anotados)
+            'commission_rate_min': 'commission_rate_min',
+            'commission_rate_max': 'commission_rate_max',
+            
+            # Seguros (campos anotados)
+            'insurance_rate_min': 'insurance_rate_min',
+            'insurance_rate_max': 'insurance_rate_max',
+            
+            # Penalidad por pago anticipado (campos anotados)
+            'early_payment_penalty_min': 'early_payment_penalty_min',
+            'early_payment_penalty_max': 'early_payment_penalty_max',
+            
+            # Período de gracia (campos anotados)
+            'grace_period_months_min': 'grace_period_months_min',
+            'grace_period_months_max': 'grace_period_months_max',
+            
+            # Financiamiento (campos anotados)
+            'max_financing_percentage': 'max_financing_percentage',
+            
+            # Garantías (campos anotados)
+            'requires_guarantor': 'requires_guarantor',
+            'requires_collateral': 'requires_collateral',
             
             # Información de marketing (campos directos)
             'target_audience': 'target_audience',

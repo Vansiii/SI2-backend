@@ -29,6 +29,15 @@ try:
 except ImportError:
     PDF_AVAILABLE = False
 
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # Backend sin GUI
+    import matplotlib.pyplot as plt
+    from matplotlib.figure import Figure
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -274,7 +283,7 @@ class PDFExportService:
         data: List[Dict[str, Any]],
         columns: List[str],
         report_metadata: Optional[Dict[str, Any]] = None,
-        chart_image: Optional[bytes] = None
+        chart_config: Optional[Dict[str, Any]] = None
     ) -> bytes:
         """
         Exporta datos a PDF profesional.
@@ -283,12 +292,20 @@ class PDFExportService:
             data: Lista de diccionarios con datos
             columns: Lista de columnas a incluir
             report_metadata: Metadatos del reporte (título, usuario, filtros, etc.)
-            chart_image: Imagen del gráfico en bytes (PNG)
+            chart_config: Configuración del gráfico a generar
         
         Returns:
             Contenido PDF en bytes
         """
         logger.info(f"Generando PDF con {len(data)} filas y {len(columns)} columnas")
+        
+        # Generar imagen del gráfico si hay configuración
+        chart_image = None
+        if chart_config and MATPLOTLIB_AVAILABLE and data:
+            try:
+                chart_image = self._generate_chart_image(data, chart_config)
+            except Exception as e:
+                logger.error(f"Error generando gráfico para PDF: {e}", exc_info=True)
         
         # Crear buffer en memoria
         buffer = io.BytesIO()
@@ -316,7 +333,7 @@ class PDFExportService:
             elements.extend(self._build_summary(data, columns))
             elements.append(Spacer(1, 0.2*inch))
         
-        # 3. Gráfico (si se proporciona)
+        # 3. Gráfico (si se generó)
         if chart_image:
             elements.extend(self._build_chart_section(chart_image, report_metadata))
             elements.append(Spacer(1, 0.2*inch))
@@ -520,7 +537,7 @@ class PDFExportService:
         columns: List[str]
     ) -> List:
         """
-        Construye tabla de datos.
+        Construye tabla de datos con formato profesional y texto ajustado.
         
         Args:
             data: Datos del reporte
@@ -545,41 +562,75 @@ class PDFExportService:
         # Preparar datos de la tabla
         table_data = []
         
-        # Encabezados
-        headers = [self._get_column_label(col) for col in columns]
+        # Encabezados con Paragraph para word wrap
+        headers = []
+        for col in columns:
+            label = self._get_column_label(col)
+            # Usar Paragraph para permitir word wrap en encabezados
+            header_para = Paragraph(
+                f'<b>{label}</b>',
+                ParagraphStyle(
+                    'HeaderCell',
+                    parent=self.styles['Normal'],
+                    fontSize=8,
+                    textColor=colors.white,
+                    alignment=TA_CENTER,
+                    fontName='Helvetica-Bold',
+                    leading=10
+                )
+            )
+            headers.append(header_para)
         table_data.append(headers)
         
-        # Filas de datos
+        # Filas de datos con Paragraph para word wrap
+        cell_style = ParagraphStyle(
+            'DataCell',
+            parent=self.styles['Normal'],
+            fontSize=7,
+            textColor=self.COLOR_GRAY_DARK,
+            alignment=TA_LEFT,
+            leading=9,
+            wordWrap='CJK'  # Permite word wrap
+        )
+        
         for row in data:
             table_row = []
             for col in columns:
                 value = row.get(col)
-                formatted_value = self._format_value_for_display(value, col)
-                table_row.append(formatted_value)
+                formatted_value = self._format_value_for_table(value, col)
+                # Usar Paragraph para permitir word wrap
+                cell_para = Paragraph(formatted_value, cell_style)
+                table_row.append(cell_para)
             table_data.append(table_row)
         
-        # Calcular anchos de columna
-        available_width = 6.5 * inch
-        col_width = available_width / len(columns)
-        col_widths = [col_width] * len(columns)
+        # Calcular anchos de columna de forma inteligente
+        col_widths = self._calculate_column_widths(columns, data)
         
-        # Crear tabla
-        table = Table(table_data, colWidths=col_widths, repeatRows=1)
+        # Crear tabla con word wrap habilitado
+        table = Table(
+            table_data,
+            colWidths=col_widths,
+            repeatRows=1,
+            splitByRow=True  # Permite dividir tabla entre páginas
+        )
         
-        # Aplicar estilos
+        # Aplicar estilos mejorados
         table.setStyle(TableStyle([
             # Encabezados
             ('BACKGROUND', (0, 0), (-1, 0), self.COLOR_SECONDARY),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-            ('TOPPADDING', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('TOPPADDING', (0, 0), (-1, 0), 6),
+            ('LEFTPADDING', (0, 0), (-1, 0), 4),
+            ('RIGHTPADDING', (0, 0), (-1, 0), 4),
             
             # Datos
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 7),
             ('ALIGN', (0, 1), (-1, -1), 'LEFT'),
             ('VALIGN', (0, 1), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 1), (-1, -1), 4),
@@ -589,6 +640,7 @@ class PDFExportService:
             
             # Bordes
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('LINEBELOW', (0, 0), (-1, 0), 1.5, self.COLOR_PRIMARY),
             
             # Filas alternadas
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, self.COLOR_GRAY_LIGHT]),
@@ -597,6 +649,118 @@ class PDFExportService:
         elements.append(table)
         
         return elements
+    
+    def _calculate_column_widths(
+        self,
+        columns: List[str],
+        data: List[Dict[str, Any]]
+    ) -> List[float]:
+        """
+        Calcula anchos de columna de forma inteligente basándose en el contenido.
+        
+        Args:
+            columns: Lista de columnas
+            data: Datos del reporte
+        
+        Returns:
+            Lista de anchos en inches
+        """
+        available_width = 6.5 * inch
+        num_columns = len(columns)
+        
+        # Anchos mínimos y máximos
+        min_width = 0.8 * inch
+        max_width = 2.5 * inch
+        
+        # Calcular peso de cada columna basándose en el tipo de dato
+        column_weights = []
+        for col in columns:
+            # Determinar peso basándose en el tipo de columna
+            if any(keyword in col for keyword in ['name', 'description', 'notes', 'reason', 'address']):
+                weight = 3  # Columnas de texto largo
+            elif any(keyword in col for keyword in ['email', 'document', 'phone']):
+                weight = 2  # Columnas de texto medio
+            elif any(keyword in col for keyword in ['amount', 'income', 'payment']):
+                weight = 1.5  # Columnas numéricas con formato
+            elif any(keyword in col for keyword in ['date', 'at']):
+                weight = 1.5  # Columnas de fecha
+            elif any(keyword in col for keyword in ['status', 'type', 'code']):
+                weight = 1  # Columnas cortas
+            else:
+                weight = 1.2  # Peso por defecto
+            
+            column_weights.append(weight)
+        
+        # Calcular anchos proporcionales
+        total_weight = sum(column_weights)
+        col_widths = []
+        
+        for weight in column_weights:
+            width = (weight / total_weight) * available_width
+            # Aplicar límites
+            width = max(min_width, min(width, max_width))
+            col_widths.append(width)
+        
+        # Ajustar si la suma excede el ancho disponible
+        total_width = sum(col_widths)
+        if total_width > available_width:
+            scale_factor = available_width / total_width
+            col_widths = [w * scale_factor for w in col_widths]
+        
+        return col_widths
+    
+    def _format_value_for_table(self, value: Any, column: str) -> str:
+        """
+        Formatea un valor para mostrar en tabla del PDF con truncamiento inteligente.
+        
+        Args:
+            value: Valor a formatear
+            column: Nombre de la columna (para contexto)
+        
+        Returns:
+            String formateado y truncado si es necesario
+        """
+        if value is None:
+            return ''
+        
+        if isinstance(value, bool):
+            return 'Sí' if value else 'No'
+        
+        if isinstance(value, (datetime, date)):
+            if isinstance(value, datetime):
+                return value.strftime('%d/%m/%Y %H:%M')
+            return value.strftime('%d/%m/%Y')
+        
+        if isinstance(value, (int, float, Decimal)):
+            # Formatear montos
+            if 'amount' in column or 'income' in column or 'payment' in column:
+                return f"${value:,.2f}"
+            
+            # Formatear porcentajes
+            if 'rate' in column or 'percentage' in column:
+                return f"{value:.2f}%"
+            
+            # Formatear números con separadores de miles
+            if isinstance(value, int):
+                return f"{value:,}"
+            
+            return f"{value:,.2f}"
+        
+        # Convertir a string y aplicar truncamiento inteligente
+        str_value = str(value)
+        
+        # Límites de longitud según tipo de columna
+        if any(keyword in column for keyword in ['description', 'notes', 'reason', 'address']):
+            max_length = 100  # Columnas de texto largo
+        elif any(keyword in column for keyword in ['name', 'email']):
+            max_length = 50  # Columnas de texto medio
+        else:
+            max_length = 40  # Columnas cortas
+        
+        if len(str_value) > max_length:
+            return str_value[:max_length-3] + '...'
+        
+        return str_value
     
     def _add_page_number(self, canvas, doc):
         """
@@ -734,3 +898,175 @@ class PDFExportService:
         ]
         
         return len(aggregated_metrics) > 0
+
+    def _generate_chart_image(
+        self,
+        data: List[Dict[str, Any]],
+        chart_config: Dict[str, Any]
+    ) -> bytes:
+        """
+        Genera imagen del gráfico usando matplotlib.
+        
+        Args:
+            data: Datos del reporte
+            chart_config: Configuración del gráfico
+        
+        Returns:
+            Imagen PNG en bytes
+        """
+        if not MATPLOTLIB_AVAILABLE:
+            logger.warning("matplotlib no está disponible, no se puede generar gráfico")
+            return None
+        
+        chart_type = chart_config.get('type', 'bar').lower()
+        
+        # Crear figura
+        fig = Figure(figsize=(8, 5), dpi=100)
+        ax = fig.add_subplot(111)
+        
+        try:
+            if chart_type in ['bar', 'horizontal_bar']:
+                self._render_matplotlib_bar(ax, data, chart_config, chart_type == 'horizontal_bar')
+            elif chart_type == 'line':
+                self._render_matplotlib_line(ax, data, chart_config)
+            elif chart_type in ['pie', 'donut']:
+                self._render_matplotlib_pie(ax, data, chart_config, chart_type == 'donut')
+            else:
+                # Tipo no soportado, usar gráfico de barras por defecto
+                logger.warning(f"Tipo de gráfico '{chart_type}' no soportado en PDF, usando 'bar'")
+                self._render_matplotlib_bar(ax, data, chart_config, False)
+            
+            # Ajustar layout
+            fig.tight_layout()
+            
+            # Guardar en buffer
+            buffer = io.BytesIO()
+            fig.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
+            buffer.seek(0)
+            image_bytes = buffer.getvalue()
+            buffer.close()
+            
+            # Limpiar figura
+            plt.close(fig)
+            
+            return image_bytes
+            
+        except Exception as e:
+            logger.error(f"Error generando gráfico matplotlib: {e}", exc_info=True)
+            plt.close(fig)
+            return None
+    
+    def _render_matplotlib_bar(
+        self,
+        ax,
+        data: List[Dict[str, Any]],
+        chart_config: Dict[str, Any],
+        horizontal: bool
+    ):
+        """Renderiza gráfico de barras con matplotlib."""
+        x_axis = chart_config.get('x_axis', 'name')
+        y_axes = chart_config.get('y_axes', [])
+        
+        # Si no hay y_axes, usar y_axis o data_key
+        if not y_axes:
+            y_key = chart_config.get('y_axis') or chart_config.get('data_key', 'value')
+            y_axes = [{'key': y_key, 'color': '#3b82f6', 'label': y_key}]
+        
+        # Extraer datos
+        labels = [str(row.get(x_axis, '')) for row in data]
+        
+        # Renderizar cada serie
+        bar_width = 0.8 / len(y_axes)
+        for i, y_axis_config in enumerate(y_axes):
+            y_key = y_axis_config['key']
+            values = [float(row.get(y_key, 0)) for row in data]
+            color = y_axis_config.get('color', '#3b82f6')
+            label = y_axis_config.get('label', y_key)
+            
+            if horizontal:
+                positions = [j + i * bar_width for j in range(len(labels))]
+                ax.barh(positions, values, bar_width, label=label, color=color)
+            else:
+                positions = [j + i * bar_width for j in range(len(labels))]
+                ax.bar(positions, values, bar_width, label=label, color=color)
+        
+        # Configurar ejes
+        if horizontal:
+            ax.set_yticks([j + bar_width * (len(y_axes) - 1) / 2 for j in range(len(labels))])
+            ax.set_yticklabels(labels)
+            ax.set_xlabel('Valor')
+        else:
+            ax.set_xticks([j + bar_width * (len(y_axes) - 1) / 2 for j in range(len(labels))])
+            ax.set_xticklabels(labels, rotation=45, ha='right')
+            ax.set_ylabel('Valor')
+        
+        if len(y_axes) > 1:
+            ax.legend()
+        
+        ax.grid(axis='y' if not horizontal else 'x', alpha=0.3)
+    
+    def _render_matplotlib_line(
+        self,
+        ax,
+        data: List[Dict[str, Any]],
+        chart_config: Dict[str, Any]
+    ):
+        """Renderiza gráfico de líneas con matplotlib."""
+        x_axis = chart_config.get('x_axis', 'name')
+        y_axes = chart_config.get('y_axes', [])
+        
+        # Si no hay y_axes, usar y_axis o data_key
+        if not y_axes:
+            y_key = chart_config.get('y_axis') or chart_config.get('data_key', 'value')
+            y_axes = [{'key': y_key, 'color': '#10b981', 'label': y_key}]
+        
+        # Extraer datos
+        labels = [str(row.get(x_axis, '')) for row in data]
+        x_positions = range(len(labels))
+        
+        # Renderizar cada serie
+        for y_axis_config in y_axes:
+            y_key = y_axis_config['key']
+            values = [float(row.get(y_key, 0)) for row in data]
+            color = y_axis_config.get('color', '#10b981')
+            label = y_axis_config.get('label', y_key)
+            
+            ax.plot(x_positions, values, marker='o', label=label, color=color, linewidth=2)
+        
+        # Configurar ejes
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(labels, rotation=45, ha='right')
+        ax.set_ylabel('Valor')
+        
+        if len(y_axes) > 1:
+            ax.legend()
+        
+        ax.grid(alpha=0.3)
+    
+    def _render_matplotlib_pie(
+        self,
+        ax,
+        data: List[Dict[str, Any]],
+        chart_config: Dict[str, Any],
+        is_donut: bool
+    ):
+        """Renderiza gráfico circular con matplotlib."""
+        data_key = chart_config.get('data_key', 'value')
+        name_key = chart_config.get('name_key', 'name')
+        colors = chart_config.get('colors', ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'])
+        
+        # Extraer datos
+        labels = [str(row.get(name_key, '')) for row in data]
+        values = [float(row.get(data_key, 0)) for row in data]
+        
+        # Renderizar
+        wedgeprops = {'width': 0.4} if is_donut else {}
+        ax.pie(
+            values,
+            labels=labels,
+            colors=colors[:len(values)],
+            autopct='%1.1f%%',
+            startangle=90,
+            wedgeprops=wedgeprops
+        )
+        ax.axis('equal')

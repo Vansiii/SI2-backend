@@ -50,70 +50,90 @@ class ReportCatalogService:
                         'is_active'
                     ],
                     'available_filters': {
-                        'status': {
+                        # ===== FILTROS PERSONALIZADOS ESPECÍFICOS =====
+                        # Producto crediticio
+                        'product_id': {
                             'operators': ['in', 'not_in'],
-                            'type': 'choice',
-                            'values': ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'OBSERVED',
-                                      'APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED']
+                            'type': 'integer'
                         },
+                        # Sucursal
+                        'branch_id': {
+                            'operators': ['in', 'not_in'],
+                            'type': 'integer'
+                        },
+                        # Nivel de riesgo
                         'risk_level': {
                             'operators': ['in', 'not_in'],
                             'type': 'choice',
                             'values': ['LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH']
                         },
-                        'identity_verification_status': {
-                            'operators': ['in', 'not_in'],
-                            'type': 'choice',
-                            'values': ['NOT_VERIFIED', 'PENDING', 'IN_PROGRESS', 'APPROVED', 
-                                      'DECLINED', 'MANUAL_REVIEW']
+                        # Monto solicitado (rango)
+                        'requested_amount_min': {
+                            'operators': ['gte'],
+                            'type': 'decimal'
                         },
-                        'documents_status': {
-                            'operators': ['in', 'not_in'],
-                            'type': 'choice',
-                            'values': ['NOT_REQUIRED', 'PENDING', 'COMPLETE', 'OBSERVED']
+                        'requested_amount_max': {
+                            'operators': ['lte'],
+                            'type': 'decimal'
                         },
+                        # Monto aprobado (rango)
+                        'approved_amount_min': {
+                            'operators': ['gte'],
+                            'type': 'decimal'
+                        },
+                        'approved_amount_max': {
+                            'operators': ['lte'],
+                            'type': 'decimal'
+                        },
+                        # Puntaje de crédito (rango)
+                        'credit_score_min': {
+                            'operators': ['gte'],
+                            'type': 'integer'
+                        },
+                        'credit_score_max': {
+                            'operators': ['lte'],
+                            'type': 'integer'
+                        },
+                        # Tipo de empleo
                         'employment_type': {
                             'operators': ['in', 'not_in'],
                             'type': 'choice',
                             'values': ['EMPLOYED', 'SELF_EMPLOYED', 'BUSINESS_OWNER', 
                                       'RETIRED', 'UNEMPLOYED', 'STUDENT', 'OTHER']
                         },
-                        'branch_id': {
+                        # Fecha de creación (rango)
+                        'created_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        'created_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Fecha de envío (rango)
+                        'submitted_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        'submitted_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Fecha de aprobación (rango)
+                        'approved_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        'approved_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Asignado a
+                        'assigned_to_id': {
                             'operators': ['in', 'not_in'],
                             'type': 'integer'
                         },
-                        'product_id': {
-                            'operators': ['in', 'not_in'],
-                            'type': 'integer'
-                        },
-                        'requested_amount': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'decimal'
-                        },
-                        'approved_amount': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'decimal'
-                        },
-                        'credit_score': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'integer'
-                        },
-                        'monthly_income': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'decimal'
-                        },
-                        'created_at': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'date'
-                        },
-                        'submitted_at': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'date'
-                        },
-                        'approved_at': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'date'
-                        },
+                        # Solo activos
                         'is_active': {
                             'operators': ['equals'],
                             'type': 'boolean'
@@ -219,19 +239,50 @@ class ReportCatalogService:
                         'avg_requested_amount', 'avg_approved_amount', 'approval_rate'
                     ],
                     'available_filters': {
+                        # ===== FILTROS PERSONALIZADOS ESPECÍFICOS =====
+                        # Sucursales específicas
                         'branch_id': {
                             'operators': ['in', 'not_in'],
                             'type': 'integer'
                         },
-                        'created_at': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'date'
-                        },
+                        # Estado de créditos
                         'status': {
                             'operators': ['in', 'not_in'],
                             'type': 'choice',
                             'values': ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'APPROVED',
                                       'REJECTED', 'DISBURSED']
+                        },
+                        # Productos
+                        'product_id': {
+                            'operators': ['in', 'not_in'],
+                            'type': 'integer'
+                        },
+                        # Período (rango)
+                        'created_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        'created_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Monto solicitado (rango)
+                        'requested_amount_min': {
+                            'operators': ['gte'],
+                            'type': 'decimal'
+                        },
+                        'requested_amount_max': {
+                            'operators': ['lte'],
+                            'type': 'decimal'
+                        },
+                        # Tasa de aprobación (rango)
+                        'approval_rate_min': {
+                            'operators': ['gte'],
+                            'type': 'decimal'
+                        },
+                        'approval_rate_max': {
+                            'operators': ['lte'],
+                            'type': 'decimal'
                         }
                     },
                     'available_groupings': [
@@ -256,23 +307,67 @@ class ReportCatalogService:
                         'approval_rate'
                     ],
                     'available_filters': {
+                        # ===== FILTROS PERSONALIZADOS ESPECÍFICOS =====
+                        # Productos específicos
                         'product_id': {
                             'operators': ['in', 'not_in'],
                             'type': 'integer'
                         },
+                        # Tipo de producto
                         'product_type': {
-                            'operators': ['in'],
+                            'operators': ['in', 'contains'],
                             'type': 'string'
                         },
-                        'created_at': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'date'
-                        },
+                        # Estado de créditos
                         'status': {
                             'operators': ['in', 'not_in'],
                             'type': 'choice',
                             'values': ['SUBMITTED', 'IN_REVIEW', 'APPROVED',
                                       'REJECTED', 'DISBURSED']
+                        },
+                        # Sucursales
+                        'branch_id': {
+                            'operators': ['in', 'not_in'],
+                            'type': 'integer'
+                        },
+                        # Período (rango)
+                        'created_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        'created_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Monto solicitado (rango)
+                        'requested_amount_min': {
+                            'operators': ['gte'],
+                            'type': 'decimal'
+                        },
+                        'requested_amount_max': {
+                            'operators': ['lte'],
+                            'type': 'decimal'
+                        },
+                        # Plazo (rango)
+                        'term_months_min': {
+                            'operators': ['gte'],
+                            'type': 'integer'
+                        },
+                        'term_months_max': {
+                            'operators': ['lte'],
+                            'type': 'integer'
+                        },
+                        # Tipo de empleo del solicitante
+                        'employment_type': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['EMPLOYED', 'SELF_EMPLOYED', 'BUSINESS_OWNER',
+                                      'RETIRED', 'UNEMPLOYED', 'STUDENT', 'OTHER']
+                        },
+                        # Tasa de aprobación (rango)
+                        'approval_rate_min': {
+                            'operators': ['gte'],
+                            'type': 'decimal'
                         }
                     },
                     'available_groupings': [
@@ -355,60 +450,99 @@ class ReportCatalogService:
                         'verified_by_name'
                     ],
                     'available_filters': {
-                        'created_at': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'date'
-                        },
-                        'verified_at': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'date'
-                        },
+                        # ===== FILTROS PERSONALIZADOS ESPECÍFICOS =====
+                        # Estado KYC
                         'kyc_status': {
                             'operators': ['in', 'not_in'],
                             'type': 'choice',
                             'values': ['PENDING', 'VERIFIED', 'REJECTED', 'EXPIRED']
                         },
+                        # Estado de empleo
                         'employment_status': {
-                            'operators': ['in'],
+                            'operators': ['in', 'not_in'],
                             'type': 'choice',
                             'values': ['EMPLOYED', 'SELF_EMPLOYED', 'BUSINESS_OWNER',
                                       'RETIRED', 'UNEMPLOYED', 'OTHER']
                         },
-                        'risk_level': {
-                            'operators': ['in'],
-                            'type': 'choice',
-                            'values': ['LOW', 'MEDIUM', 'HIGH']
-                        },
+                        # Tipo de cliente
                         'client_type': {
                             'operators': ['in'],
                             'type': 'choice',
                             'values': ['NATURAL', 'JURIDICA']
                         },
+                        # Tipo de documento
                         'document_type': {
                             'operators': ['in'],
                             'type': 'choice',
                             'values': ['CI', 'NIT', 'PASSPORT', 'RUC']
                         },
+                        # Género
                         'gender': {
                             'operators': ['in'],
                             'type': 'choice',
                             'values': ['M', 'F', 'O']
                         },
+                        # Nivel de riesgo
+                        'risk_level': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['LOW', 'MEDIUM', 'HIGH']
+                        },
+                        # Ciudad
                         'city': {
-                            'operators': ['in'],
+                            'operators': ['in', 'contains'],
                             'type': 'string'
                         },
+                        # Departamento
                         'department': {
-                            'operators': ['in'],
+                            'operators': ['in', 'contains'],
                             'type': 'string'
                         },
+                        # Ingreso mensual (rango)
+                        'monthly_income_min': {
+                            'operators': ['gte'],
+                            'type': 'decimal'
+                        },
+                        'monthly_income_max': {
+                            'operators': ['lte'],
+                            'type': 'decimal'
+                        },
+                        # Fecha de registro (rango)
+                        'created_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        'created_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Fecha de verificación (rango)
+                        'verified_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        'verified_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Fecha de nacimiento (rango)
+                        'birth_date_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        'birth_date_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Solo activos
                         'is_active': {
                             'operators': ['equals'],
                             'type': 'boolean'
                         },
-                        'monthly_income': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'decimal'
+                        # Con créditos activos
+                        'has_active_loans': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
                         }
                     },
                     'available_groupings': [
@@ -529,23 +663,60 @@ class ReportCatalogService:
                         'days_since_submission', 'created_at'
                     ],
                     'available_filters': {
+                        # ===== FILTROS PERSONALIZADOS ESPECÍFICOS =====
+                        # Estado de documentos
                         'document_status': {
                             'operators': ['in'],
                             'type': 'choice',
                             'values': ['PENDING', 'UPLOADED', 'UNDER_REVIEW'],
                             'default': ['PENDING']
                         },
+                        # Estado de solicitud
                         'application_status': {
                             'operators': ['in'],
                             'type': 'choice',
                             'values': ['SUBMITTED', 'IN_REVIEW', 'OBSERVED']
                         },
-                        'days_since_submission': {
+                        # Tipo de documento
+                        'document_type_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        # Producto
+                        'product_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        # Sucursal
+                        'branch_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        # Días desde envío (rango)
+                        'days_since_submission_min': {
                             'operators': ['gte'],
                             'type': 'integer'
                         },
-                        'created_at': {
-                            'operators': ['gte', 'lte', 'between'],
+                        'days_since_submission_max': {
+                            'operators': ['lte'],
+                            'type': 'integer'
+                        },
+                        # Porcentaje de completitud (rango)
+                        'completion_percentage_min': {
+                            'operators': ['gte'],
+                            'type': 'decimal'
+                        },
+                        'completion_percentage_max': {
+                            'operators': ['lte'],
+                            'type': 'decimal'
+                        },
+                        # Fecha de creación (rango)
+                        'created_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        'created_at_end': {
+                            'operators': ['lte'],
                             'type': 'date'
                         }
                     },
@@ -571,23 +742,45 @@ class ReportCatalogService:
                         'processing_time_minutes', 'branch_name'
                     ],
                     'available_filters': {
-                        'status': {
-                            'operators': ['in', 'not_in'],
-                            'type': 'choice',
-                            'values': ['PENDING', 'IN_PROGRESS', 'APPROVED', 'DECLINED',
-                                      'MANUAL_REVIEW', 'EXPIRED', 'ERROR']
-                        },
+                        # Decisión
                         'decision': {
                             'operators': ['in'],
                             'type': 'choice',
                             'values': ['APPROVED', 'DECLINED', 'PENDING', 'MANUAL_REVIEW']
                         },
-                        'started_at': {
-                            'operators': ['gte', 'lte', 'between'],
-                            'type': 'date'
-                        },
+                        # Sucursal
                         'branch_id': {
                             'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        # Fecha inicio desde
+                        'started_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        # Fecha inicio hasta
+                        'started_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Fecha completado desde
+                        'completed_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        # Fecha completado hasta
+                        'completed_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Tiempo procesamiento mínimo (minutos)
+                        'processing_time_min': {
+                            'operators': ['gte'],
+                            'type': 'integer'
+                        },
+                        # Tiempo procesamiento máximo (minutos)
+                        'processing_time_max': {
+                            'operators': ['lte'],
                             'type': 'integer'
                         }
                     },
@@ -612,16 +805,23 @@ class ReportCatalogService:
                         'product_name', 'product_code', 'product_type', 'description',
                         'is_active', 'display_order',
                         # Parámetros de montos
-                        'min_amount', 'max_amount', 'default_amount',
+                        'min_amount', 'max_amount',
                         # Parámetros de plazos
-                        'min_term_months', 'max_term_months', 'default_term_months',
+                        'min_term_months', 'max_term_months',
                         # Tasas de interés
-                        'min_interest_rate', 'max_interest_rate', 'default_interest_rate',
-                        'interest_rate_type',
-                        # Comisiones y cargos
-                        'origination_fee_percentage', 'origination_fee_fixed',
-                        'late_payment_fee_percentage', 'late_payment_fee_fixed',
-                        'prepayment_penalty_percentage',
+                        'min_interest_rate', 'max_interest_rate', 'interest_rate_type',
+                        # Comisiones
+                        'commission_rate_min', 'commission_rate_max',
+                        # Seguros
+                        'insurance_rate_min', 'insurance_rate_max',
+                        # Penalidad por pago anticipado
+                        'early_payment_penalty_min', 'early_payment_penalty_max',
+                        # Período de gracia
+                        'grace_period_months_min', 'grace_period_months_max',
+                        # Financiamiento
+                        'max_financing_percentage',
+                        # Garantías
+                        'requires_guarantor', 'requires_collateral',
                         # Información de marketing
                         'target_audience', 'benefits',
                         # Conjunto de reglas
@@ -637,6 +837,11 @@ class ReportCatalogService:
                         'product_type': {
                             'operators': ['in'],
                             'type': 'string'
+                        },
+                        'institution_name': {
+                            'operators': ['equals', 'contains'],
+                            'type': 'string',
+                            'saas_only': True  # Solo para reportes SAAS
                         },
                         'min_amount': {
                             'operators': ['gte', 'lte', 'between'],
@@ -662,20 +867,574 @@ class ReportCatalogService:
                             'operators': ['gte', 'lte', 'between'],
                             'type': 'decimal'
                         },
+                        'requires_guarantor': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'requires_collateral': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
                         'created_at': {
                             'operators': ['gte', 'lte', 'between'],
                             'type': 'date'
                         }
                     },
                     'available_groupings': [
-                        'product_type', 'is_active', 'rule_set_name', 'interest_rate_type'
+                        'product_type', 'is_active', 'rule_set_name', 'interest_rate_type',
+                        'requires_guarantor', 'requires_collateral'
                     ],
                     'available_sort_fields': [
                         'product_name', 'product_code', 'display_order',
-                        'min_amount', 'max_amount', 'default_amount',
+                        'min_amount', 'max_amount',
                         'min_term_months', 'max_term_months',
                         'min_interest_rate', 'max_interest_rate',
+                        'commission_rate_min', 'commission_rate_max',
                         'created_at', 'updated_at'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                }
+            },
+            'BRANCHES': {
+                'branches_performance': {
+                    'name': 'Rendimiento de Sucursales',
+                    'description': 'Análisis comparativo del rendimiento de sucursales',
+                    'datasource': 'Branch',
+                    'roles': ['ADMIN', 'MANAGER'],
+                    'available_columns': [
+                        'branch_name', 'branch_city', 'branch_address',
+                        'is_active', 'assigned_users_count',
+                        'total_applications', 'approved_count', 'rejected_count', 'pending_count',
+                        'total_requested_amount', 'total_approved_amount',
+                        'avg_requested_amount', 'avg_approved_amount',
+                        'approval_rate', 'avg_processing_days',
+                        'total_clients', 'active_clients',
+                        'created_at'
+                    ],
+                    'available_filters': {
+                        'branch_id': {
+                            'operators': ['in', 'not_in'],
+                            'type': 'integer'
+                        },
+                        'city': {
+                            'operators': ['in'],
+                            'type': 'string'
+                        },
+                        'is_active': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'created_at': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'date'
+                        },
+                        'approved_at': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'date'
+                        }
+                    },
+                    'available_groupings': [
+                        'branch_name', 'city', 'month', 'quarter', 'year'
+                    ],
+                    'available_sort_fields': [
+                        'branch_name', 'total_applications', 'approved_count',
+                        'total_approved_amount', 'approval_rate', 'avg_processing_days'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                },
+                'branches_by_city': {
+                    'name': 'Sucursales por Ciudad',
+                    'description': 'Distribución y estadísticas de sucursales por ciudad',
+                    'datasource': 'Branch',
+                    'roles': ['ADMIN', 'MANAGER'],
+                    'available_columns': [
+                        'city', 'branch_count', 'active_branches', 'inactive_branches',
+                        'total_users_assigned', 'total_applications',
+                        'total_approved_amount'
+                    ],
+                    'available_filters': {
+                        'city': {
+                            'operators': ['in'],
+                            'type': 'string'
+                        },
+                        'is_active': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        }
+                    },
+                    'available_groupings': [
+                        'city'
+                    ],
+                    'available_sort_fields': [
+                        'city', 'branch_count', 'total_applications', 'total_approved_amount'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                }
+            },
+            'AUDIT': {
+                'audit_logs_by_action': {
+                    'name': 'Logs de Auditoría por Acción',
+                    'description': 'Registro de acciones del sistema para auditoría',
+                    'datasource': 'AuditLog',
+                    'roles': ['ADMIN'],
+                    'available_columns': [
+                        'user_email', 'user_name',
+                        'action', 'action_display',
+                        'resource_type', 'resource_id',
+                        'description', 'severity',
+                        'ip_address', 'user_agent',
+                        'institution_name',
+                        'timestamp'
+                    ],
+                    'available_filters': {
+                        # Acción realizada
+                        'action': {
+                            'operators': ['equals', 'contains'],
+                            'type': 'string'
+                        },
+                        # Usuario
+                        'user_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        # Tipo de evento
+                        'event_type': {
+                            'operators': ['equals', 'contains'],
+                            'type': 'string'
+                        },
+                        # Severidad
+                        'severity': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['info', 'warning', 'error', 'critical']
+                        },
+                        # Dirección IP
+                        'ip_address': {
+                            'operators': ['equals', 'contains'],
+                            'type': 'string'
+                        },
+                        # Fecha desde
+                        'created_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        # Fecha hasta
+                        'created_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Tipo de recurso
+                        'resource_type': {
+                            'operators': ['equals', 'contains'],
+                            'type': 'string'
+                        },
+                        # ID de recurso
+                        'resource_id': {
+                            'operators': ['equals'],
+                            'type': 'integer'
+                        }
+                    },
+                    'available_groupings': [
+                        'action', 'resource_type', 'severity', 'user_email',
+                        'institution_name', 'day', 'hour'
+                    ],
+                    'available_sort_fields': [
+                        'timestamp', 'user_email', 'action', 'severity'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                },
+                'security_events_by_type': {
+                    'name': 'Eventos de Seguridad por Tipo',
+                    'description': 'Eventos de seguridad y amenazas detectadas',
+                    'datasource': 'SecurityEvent',
+                    'roles': ['ADMIN'],
+                    'available_columns': [
+                        'event_type', 'event_type_display',
+                        'user_email', 'email_attempted',
+                        'ip_address', 'user_agent',
+                        'description', 'resolved',
+                        'resolved_at', 'resolved_by_name',
+                        'timestamp'
+                    ],
+                    'available_filters': {
+                        'event_type': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['failed_login', 'account_locked', 'suspicious_activity',
+                                      'unauthorized_access', 'permission_escalation', 'rate_limit_exceeded']
+                        },
+                        'user_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        'email': {
+                            'operators': ['equals'],
+                            'type': 'string'
+                        },
+                        'ip_address': {
+                            'operators': ['equals'],
+                            'type': 'string'
+                        },
+                        'resolved': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'timestamp': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'datetime'
+                        }
+                    },
+                    'available_groupings': [
+                        'event_type', 'ip_address', 'resolved',
+                        'day', 'hour'
+                    ],
+                    'available_sort_fields': [
+                        'timestamp', 'event_type', 'ip_address'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                }
+            },
+            'USERS': {
+                'users_by_role': {
+                    'name': 'Usuarios por Rol',
+                    'description': 'Distribución de usuarios por roles y actividad',
+                    'datasource': 'User',
+                    'roles': ['ADMIN', 'MANAGER'],
+                    'available_columns': [
+                        'full_name', 'email', 'username',
+                        'role_name', 'role_code',
+                        'institution_name',
+                        'is_active', 'is_staff', 'is_superuser',
+                        'last_login', 'date_joined',
+                        'login_count', 'last_activity_at',
+                        'created_at'
+                    ],
+                    'available_filters': {
+                        # Solo activos
+                        'is_active': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        # Solo staff
+                        'is_staff': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        # Tenant
+                        'tenant_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        # Rol
+                        'role': {
+                            'operators': ['equals', 'contains'],
+                            'type': 'string'
+                        },
+                        # Fecha registro desde
+                        'created_at_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        # Fecha registro hasta
+                        'created_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Último login desde
+                        'last_login_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        # Último login hasta
+                        'last_login_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Email verificado
+                        'email_verified': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        }
+                    },
+                    'available_groupings': [
+                        'role_name', 'institution_name', 'is_active',
+                        'month', 'quarter'
+                    ],
+                    'available_sort_fields': [
+                        'full_name', 'email', 'last_login', 'date_joined', 'login_count'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                },
+                'users_activity_report': {
+                    'name': 'Reporte de Actividad de Usuarios',
+                    'description': 'Actividad y uso del sistema por usuario',
+                    'datasource': 'User',
+                    'roles': ['ADMIN'],
+                    'available_columns': [
+                        'user_name', 'user_email', 'role_name',
+                        'institution_name',
+                        'last_login', 'login_count',
+                        'total_actions', 'actions_this_month',
+                        'most_common_action',
+                        'last_activity_at', 'days_since_last_activity',
+                        'is_active'
+                    ],
+                    'available_filters': {
+                        'institution_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        'role_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        'is_active': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'last_login': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'datetime'
+                        },
+                        'last_activity_at': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'datetime'
+                        }
+                    },
+                    'available_groupings': [
+                        'role_name', 'institution_name',
+                        'month'
+                    ],
+                    'available_sort_fields': [
+                        'user_name', 'last_login', 'login_count', 'total_actions', 'last_activity_at'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                }
+            },
+            'STORAGE': {
+                'file_storage_usage': {
+                    'name': 'Uso de Almacenamiento',
+                    'description': 'Análisis de uso de almacenamiento por institución',
+                    'datasource': 'FileResource',
+                    'roles': ['ADMIN'],
+                    'available_columns': [
+                        'institution_name',
+                        'resource_type', 'category',
+                        'total_files', 'total_size_gb',
+                        'active_files', 'archived_files', 'deleted_files',
+                        'avg_file_size_mb',
+                        'oldest_file_date', 'newest_file_date'
+                    ],
+                    'available_filters': {
+                        'institution_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        'resource_type': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['branding', 'document', 'profile_picture', 'report']
+                        },
+                        'category': {
+                            'operators': ['in'],
+                            'type': 'string'
+                        },
+                        'status': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['active', 'archived', 'deleted']
+                        },
+                        'visibility': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['private', 'public', 'tenant_only']
+                        },
+                        'created_at': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'datetime'
+                        }
+                    },
+                    'available_groupings': [
+                        'institution_name', 'resource_type', 'category', 'status',
+                        'month', 'quarter'
+                    ],
+                    'available_sort_fields': [
+                        'institution_name', 'total_files', 'total_size_gb', 'oldest_file_date'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                }
+            },
+            'RULES': {
+                'rule_sets_by_product': {
+                    'name': 'Conjuntos de Reglas por Producto',
+                    'description': 'Configuración de reglas aplicadas a productos',
+                    'datasource': 'TenantRuleSet',
+                    'roles': ['ADMIN', 'MANAGER'],
+                    'available_columns': [
+                        'rule_set_name', 'rule_set_code', 'rule_set_description',
+                        'product_name', 'product_code', 'product_type',
+                        'is_active', 'is_default',
+                        'eligibility_rules_count', 'parameters_count', 'thresholds_count',
+                        'created_at', 'updated_at'
+                    ],
+                    'available_filters': {
+                        'product_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        'is_active': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'is_default': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'created_at': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'date'
+                        }
+                    },
+                    'available_groupings': [
+                        'product_name', 'product_type', 'is_active'
+                    ],
+                    'available_sort_fields': [
+                        'rule_set_name', 'product_name', 'created_at', 'updated_at'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                },
+                'product_parameters_analysis': {
+                    'name': 'Análisis de Parámetros de Productos',
+                    'description': 'Parámetros configurados para productos crediticios',
+                    'datasource': 'CreditProductParameter',
+                    'roles': ['ADMIN', 'MANAGER'],
+                    'available_columns': [
+                        'product_name', 'rule_set_name',
+                        'min_amount', 'max_amount', 'default_amount',
+                        'min_term_months', 'max_term_months', 'default_term_months',
+                        'min_interest_rate', 'max_interest_rate', 'default_interest_rate',
+                        'interest_rate_type',
+                        'commission_rate_min', 'commission_rate_max',
+                        'requires_guarantor', 'requires_collateral',
+                        'is_active'
+                    ],
+                    'available_filters': {
+                        'product_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        'rule_set_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        'is_active': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'min_amount': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'decimal'
+                        },
+                        'max_amount': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'decimal'
+                        },
+                        'requires_guarantor': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'requires_collateral': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        }
+                    },
+                    'available_groupings': [
+                        'product_name', 'interest_rate_type',
+                        'requires_guarantor', 'requires_collateral'
+                    ],
+                    'available_sort_fields': [
+                        'product_name', 'min_amount', 'max_amount', 'min_interest_rate'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                }
+            },
+            'ANALYTICS': {
+                'conversion_funnel_analysis': {
+                    'name': 'Análisis de Embudo de Conversión',
+                    'description': 'Análisis del embudo desde registro hasta desembolso',
+                    'datasource': 'LoanApplication',
+                    'roles': ['ADMIN', 'MANAGER'],
+                    'available_columns': [
+                        'stage', 'stage_order',
+                        'total_count', 'conversion_rate',
+                        'drop_off_count', 'drop_off_rate',
+                        'avg_time_to_next_stage_days'
+                    ],
+                    'available_filters': {
+                        'product_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        'branch_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        'created_at': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'date'
+                        }
+                    },
+                    'available_groupings': [
+                        'product_name', 'branch_name',
+                        'month', 'quarter'
+                    ],
+                    'available_sort_fields': [
+                        'stage_order', 'total_count', 'conversion_rate', 'drop_off_rate'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                },
+                'risk_analysis_report': {
+                    'name': 'Análisis de Riesgo Crediticio',
+                    'description': 'Distribución y análisis de niveles de riesgo',
+                    'datasource': 'LoanApplication',
+                    'roles': ['ADMIN', 'MANAGER', 'ANALYST'],
+                    'available_columns': [
+                        'risk_level', 'risk_level_display',
+                        'total_applications', 'approved_count', 'rejected_count',
+                        'avg_credit_score', 'avg_requested_amount', 'avg_approved_amount',
+                        'avg_debt_to_income_ratio',
+                        'approval_rate'
+                    ],
+                    'available_filters': {
+                        'risk_level': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH']
+                        },
+                        'status': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['SUBMITTED', 'IN_REVIEW', 'APPROVED', 'REJECTED']
+                        },
+                        'credit_score': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'integer'
+                        },
+                        'created_at': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'date'
+                        },
+                        'approved_at': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'date'
+                        }
+                    },
+                    'available_groupings': [
+                        'risk_level', 'product_name', 'branch_name',
+                        'month', 'quarter'
+                    ],
+                    'available_sort_fields': [
+                        'risk_level', 'total_applications', 'approval_rate', 'avg_credit_score'
                     ],
                     'formats': ['csv', 'xlsx', 'pdf']
                 }
@@ -694,23 +1453,57 @@ class ReportCatalogService:
                         'active_loans_count', 'total_clients'
                     ],
                     'available_filters': {
+                        # Estado de suscripción
+                        'subscription_status': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['TRIAL', 'ACTIVE', 'SUSPENDED', 'CANCELLED', 'EXPIRED']
+                        },
+                        # Tipo de institución
                         'institution_type': {
                             'operators': ['in'],
                             'type': 'choice',
                             'values': ['BANKING', 'MICROFINANCE', 'COOPERATIVE', 'FINTECH']
                         },
+                        # Plan de suscripción
+                        'plan_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        # Solo activos
                         'is_active': {
                             'operators': ['equals'],
                             'type': 'boolean'
                         },
-                        'created_at': {
-                            'operators': ['gte', 'lte', 'between'],
+                        # Fecha creación desde
+                        'created_at_start': {
+                            'operators': ['gte'],
                             'type': 'date'
                         },
-                        'subscription_status': {
-                            'operators': ['in'],
-                            'type': 'choice',
-                            'values': ['TRIAL', 'ACTIVE', 'SUSPENDED', 'CANCELLED', 'EXPIRED']
+                        # Fecha creación hasta
+                        'created_at_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Usuarios mínimos
+                        'users_count_min': {
+                            'operators': ['gte'],
+                            'type': 'integer'
+                        },
+                        # Usuarios máximos
+                        'users_count_max': {
+                            'operators': ['lte'],
+                            'type': 'integer'
+                        },
+                        # Sucursales mínimas
+                        'branches_count_min': {
+                            'operators': ['gte'],
+                            'type': 'integer'
+                        },
+                        # Sucursales máximas
+                        'branches_count_max': {
+                            'operators': ['lte'],
+                            'type': 'integer'
                         }
                     },
                     'available_groupings': [
@@ -773,8 +1566,150 @@ class ReportCatalogService:
                         'days_active'
                     ],
                     'available_filters': {
-                        'status': {
+                        # Estado
+                        'subscription_status': {
                             'operators': ['in', 'not_in'],
+                            'type': 'choice',
+                            'values': ['TRIAL', 'ACTIVE', 'SUSPENDED', 'CANCELLED', 'EXPIRED']
+                        },
+                        # Estado de pago
+                        'payment_status': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['PENDING', 'PAID', 'OVERDUE', 'FAILED']
+                        },
+                        # Plan
+                        'plan_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        # Tenant
+                        'tenant_id': {
+                            'operators': ['in'],
+                            'type': 'integer'
+                        },
+                        # Ciclo de facturación
+                        'billing_cycle': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['MONTHLY', 'QUARTERLY', 'ANNUAL']
+                        },
+                        # Fecha inicio desde
+                        'start_date_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        # Fecha inicio hasta
+                        'start_date_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Fecha fin desde
+                        'end_date_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        # Fecha fin hasta
+                        'end_date_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Fin de prueba desde
+                        'trial_end_date_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        # Fin de prueba hasta
+                        'trial_end_date_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        },
+                        # Próxima facturación desde
+                        'next_billing_date_start': {
+                            'operators': ['gte'],
+                            'type': 'date'
+                        },
+                        # Próxima facturación hasta
+                        'next_billing_date_end': {
+                            'operators': ['lte'],
+                            'type': 'date'
+                        }
+                    },
+                    'available_groupings': [
+                        'status', 'payment_status', 'plan_name', 'month', 'quarter'
+                    ],
+                    'available_sort_fields': [
+                        'tenant_name', 'start_date', 'end_date', 'next_billing_date',
+                        'amount_due', 'total_paid', 'trial_end_date', 'plan_name',
+                        'days_active'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                },
+                'subscription_plans_comparison': {
+                    'name': 'Comparación de Planes de Suscripción',
+                    'description': 'Análisis de planes disponibles y sus características',
+                    'datasource': 'SubscriptionPlan',
+                    'roles': ['saas_admin'],
+                    'available_columns': [
+                        'name', 'slug', 'description',
+                        'price', 'billing_cycle', 'billing_cycle_display',
+                        'trial_days', 'setup_fee',
+                        'max_users', 'max_branches', 'max_products',
+                        'max_loans_per_month', 'max_storage_gb',
+                        'has_ai_scoring', 'has_workflows', 'has_reporting',
+                        'has_mobile_app', 'has_api_access', 'has_white_label',
+                        'has_priority_support', 'has_custom_integrations',
+                        'is_active', 'is_featured', 'display_order',
+                        'price_per_month'
+                    ],
+                    'available_filters': {
+                        'is_active': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'is_featured': {
+                            'operators': ['equals'],
+                            'type': 'boolean'
+                        },
+                        'billing_cycle': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['MONTHLY', 'QUARTERLY', 'ANNUAL']
+                        },
+                        'price': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'decimal'
+                        }
+                    },
+                    'available_groupings': [
+                        'billing_cycle', 'is_featured'
+                    ],
+                    'available_sort_fields': [
+                        'name', 'price', 'display_order', 'max_users', 'max_branches'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                },
+                'subscriptions_usage_analysis': {
+                    'name': 'Análisis de Uso de Suscripciones',
+                    'description': 'Uso actual vs límites de las suscripciones',
+                    'datasource': 'Subscription',
+                    'roles': ['saas_admin'],
+                    'available_columns': [
+                        'institution_name', 'institution_slug',
+                        'plan_name', 'status', 'status_display',
+                        'payment_status', 'payment_status_display',
+                        'start_date', 'end_date', 'trial_end_date', 'next_billing_date',
+                        'amount_due', 'total_paid',
+                        'current_users', 'max_users', 'users_percentage',
+                        'current_branches', 'max_branches', 'branches_percentage',
+                        'current_products', 'max_products', 'products_percentage',
+                        'current_month_loans', 'max_loans_per_month', 'loans_percentage',
+                        'current_storage_gb', 'max_storage_gb', 'storage_percentage',
+                        'is_within_limits', 'days_until_renewal'
+                    ],
+                    'available_filters': {
+                        'status': {
+                            'operators': ['in'],
                             'type': 'choice',
                             'values': ['TRIAL', 'ACTIVE', 'SUSPENDED', 'CANCELLED', 'EXPIRED']
                         },
@@ -787,7 +1722,7 @@ class ReportCatalogService:
                             'operators': ['in'],
                             'type': 'integer'
                         },
-                        'tenant_id': {
+                        'institution_id': {
                             'operators': ['in'],
                             'type': 'integer'
                         },
@@ -798,15 +1733,62 @@ class ReportCatalogService:
                         'end_date': {
                             'operators': ['gte', 'lte', 'between'],
                             'type': 'date'
+                        },
+                        'next_billing_date': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'date'
                         }
                     },
                     'available_groupings': [
-                        'status', 'payment_status', 'plan_name', 'month', 'quarter'
+                        'status', 'payment_status', 'plan_name',
+                        'month', 'quarter'
                     ],
                     'available_sort_fields': [
-                        'tenant_name', 'start_date', 'end_date', 'next_billing_date',
-                        'amount_due', 'total_paid', 'trial_end_date', 'plan_name',
+                        'institution_name', 'users_percentage', 'branches_percentage',
+                        'storage_percentage', 'days_until_renewal', 'total_paid'
+                    ],
+                    'formats': ['csv', 'xlsx', 'pdf']
+                },
+                'subscriptions_revenue_analysis': {
+                    'name': 'Análisis de Ingresos por Suscripciones',
+                    'description': 'Análisis financiero de suscripciones',
+                    'datasource': 'Subscription',
+                    'roles': ['saas_admin'],
+                    'available_columns': [
+                        'institution_name', 'plan_name',
+                        'status', 'payment_status',
+                        'billing_cycle',
+                        'monthly_revenue',
+                        'total_paid', 'amount_due',
+                        'start_date', 'next_billing_date',
                         'days_active'
+                    ],
+                    'available_filters': {
+                        'status': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['TRIAL', 'ACTIVE', 'SUSPENDED', 'CANCELLED', 'EXPIRED']
+                        },
+                        'payment_status': {
+                            'operators': ['in'],
+                            'type': 'choice',
+                            'values': ['PENDING', 'PAID', 'OVERDUE', 'FAILED']
+                        },
+                        'start_date': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'date'
+                        },
+                        'next_billing_date': {
+                            'operators': ['gte', 'lte', 'between'],
+                            'type': 'date'
+                        }
+                    },
+                    'available_groupings': [
+                        'plan_name', 'status', 'payment_status',
+                        'month', 'quarter', 'year'
+                    ],
+                    'available_sort_fields': [
+                        'institution_name', 'monthly_revenue', 'total_paid', 'amount_due', 'days_active'
                     ],
                     'formats': ['csv', 'xlsx', 'pdf']
                 }
