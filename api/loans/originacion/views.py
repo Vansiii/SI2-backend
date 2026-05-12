@@ -345,3 +345,62 @@ class CreditApplicationViewSet(viewsets.ModelViewSet):
                 comments, many=True, context={'request': request}
             )
             return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def sync_workflow(self, request, pk=None):
+        """
+        Sincroniza el estado del workflow de una solicitud.
+        
+        FASE 3 - Endpoint de Sincronización:
+        Recalcula el estado correcto basándose en:
+        - identity_verification_status
+        - documents_status
+        - Workflow configurado
+        
+        Útil para corregir solicitudes "atascadas" donde el estado principal
+        no refleja el progreso real.
+        
+        POST /credit-applications/{id}/sync-workflow/
+        
+        Returns:
+            {
+                'success': bool,
+                'changed': bool,
+                'previous_status': str,
+                'new_status': str,
+                'reason': str,
+                'application': {...}
+            }
+        """
+        application = self.get_object()
+        
+        try:
+            from api.loans.services.workflow_sync_service import WorkflowSyncService
+            
+            result = WorkflowSyncService.sync_application_workflow(application)
+            
+            serializer = CreditApplicationDetailSerializer(
+                result['application'],
+                context={'request': request}
+            )
+            
+            return Response({
+                'success': True,
+                'changed': result['changed'],
+                'previous_status': result['previous_status'],
+                'new_status': result['new_status'],
+                'reason': result['reason'],
+                'application': serializer.data
+            })
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error sincronizando workflow: {str(e)}", exc_info=True)
+            return Response(
+                {
+                    'success': False,
+                    'error': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

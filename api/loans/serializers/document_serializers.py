@@ -59,16 +59,8 @@ class LoanApplicationDocumentRequirementSerializer(serializers.ModelSerializer):
         source='product_document_requirement.is_mandatory',
         read_only=True
     )
-    allowed_formats = serializers.ListField(
-        source='product_document_requirement.document_type.allowed_extensions',
-        read_only=True
-    )
-    max_file_size_mb = serializers.DecimalField(
-        source='product_document_requirement.document_type.max_file_size_mb',
-        max_digits=5,
-        decimal_places=2,
-        read_only=True
-    )
+    allowed_formats = serializers.SerializerMethodField()
+    max_file_size_mb = serializers.SerializerMethodField()
     
     # Información del archivo
     file_resource_detail = FileResourceSerializer(
@@ -133,6 +125,14 @@ class LoanApplicationDocumentRequirementSerializer(serializers.ModelSerializer):
     def get_signed_url(self, obj):
         """Genera URL firmada para descargar el documento"""
         return obj.get_signed_url(expires_in=3600)
+    
+    def get_allowed_formats(self, obj):
+        """Obtiene formatos permitidos con fallback"""
+        return obj.product_document_requirement.get_allowed_formats()
+    
+    def get_max_file_size_mb(self, obj):
+        """Obtiene tamaño máximo con fallback"""
+        return float(obj.product_document_requirement.get_max_file_size_mb())
     
     def get_review_history(self, obj):
         """Retorna el historial de revisiones"""
