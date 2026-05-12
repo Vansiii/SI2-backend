@@ -901,5 +901,4 @@ from api.loans.models_catalogs import (
     Currency,
     DocumentType,
     GuaranteeType,
-)story,
 )
