@@ -45,6 +45,10 @@ ALLOWED_HOSTS = [
 if env_bool('DJANGO_ALLOW_ALL_HOSTS', False):
     ALLOWED_HOSTS = ['*']
 
+# En producción, asegurar que Railway está en ALLOWED_HOSTS
+if not DEBUG and 'railway.app' not in str(ALLOWED_HOSTS):
+    ALLOWED_HOSTS.append('*.railway.app')
+
 
 # Application definition
 
@@ -95,7 +99,7 @@ MIDDLEWARE = [
     'api.middleware.RateLimitMiddleware',  # Rate limiting
     'api.middleware.audit_middleware.AuditMiddleware',  # Auditoría automática de acciones
     'api.middleware.audit_middleware.SecurityEventMiddleware',  # Eventos de seguridad
-    'api.middleware.debug_middleware.DebugRequestMiddleware',  # Debug middleware
+    # 'api.middleware.debug_middleware.DebugRequestMiddleware',  # Debug middleware - DESHABILITADO temporalmente
 ]
 
 ROOT_URLCONF = 'config.urls'
