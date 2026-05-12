@@ -900,5 +900,4 @@ from api.loans.models_catalogs import (
     PaymentFrequency,
     Currency,
     DocumentType,
-    GuaranteeType,
 )
