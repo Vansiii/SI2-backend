@@ -85,16 +85,18 @@ class Command(BaseCommand):
                     'manage_templates',  # Agregado para poder ver plantillas
                     'access_tenant_reports',
                 ],
-                # Superadmin - Acceso completo incluyendo SAAS
+                # Superadmin - Acceso solo a reportes SAAS (administración de plataforma)
+                # NO tiene acceso a reportes TENANT porque contienen datos privados
+                # de cada institución financiera
                 'Superadmin': [
                     'view_report_catalog',
                     'generate_report',
                     'export_report',
                     'manage_templates',
                     'use_voice_reports',
-                    'view_all_reports',
-                    'access_tenant_reports',
-                    'access_saas_reports',
+                    # NO incluir: 'view_all_reports' (datos privados del tenant)
+                    # NO incluir: 'access_tenant_reports' (datos privados del tenant)
+                    'access_saas_reports',  # Solo reportes de administración
                 ],
             }
             

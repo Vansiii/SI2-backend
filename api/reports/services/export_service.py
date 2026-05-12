@@ -391,11 +391,22 @@ class ExportService:
                 current_row += 1
                 
                 filters = report_metadata['filters']
-                for filter_key, filter_value in filters.items():
-                    filter_cell = ws.cell(row=current_row, column=2)
-                    filter_cell.value = f"• {self._format_filter_label(filter_key)}: {filter_value}"
-                    filter_cell.font = Font(size=9, color="666666", italic=True)
-                    current_row += 1
+                # Manejar tanto formato de lista como diccionario
+                if isinstance(filters, list):
+                    for filter_item in filters:
+                        field = filter_item.get('field', '')
+                        operator = filter_item.get('operator', '')
+                        value = filter_item.get('value', '')
+                        filter_cell = ws.cell(row=current_row, column=2)
+                        filter_cell.value = f"• {self._format_filter_label(field)} {operator}: {value}"
+                        filter_cell.font = Font(size=9, color="666666", italic=True)
+                        current_row += 1
+                elif isinstance(filters, dict):
+                    for filter_key, filter_value in filters.items():
+                        filter_cell = ws.cell(row=current_row, column=2)
+                        filter_cell.value = f"• {self._format_filter_label(filter_key)}: {filter_value}"
+                        filter_cell.font = Font(size=9, color="666666", italic=True)
+                        current_row += 1
             
             # Línea separadora antes de los datos
             current_row += 1
@@ -639,14 +650,14 @@ class ExportService:
         
         pdf_service = PDFExportService()
         
-        # Obtener imagen del gráfico si existe en metadata
-        chart_image = None
-        if report_metadata and report_metadata.get('chart_image'):
-            chart_image = report_metadata['chart_image']
+        # Obtener configuración del gráfico si existe en metadata
+        chart_config = None
+        if report_metadata and report_metadata.get('chart_config'):
+            chart_config = report_metadata['chart_config']
         
         return pdf_service.export(
             data=data,
             columns=columns,
             report_metadata=report_metadata,
-            chart_image=chart_image
+            chart_config=chart_config
         )

@@ -45,6 +45,10 @@ REGLAS ESTRICTAS:
 5. Si falta información crítica, agrégala a missing_fields
 6. Devuelve SOLO JSON válido, sin texto adicional ni explicaciones
 7. Sé conservador: si no estás seguro, marca como NEEDS_REVIEW
+8. **CRÍTICO**: Para "report_type", usa EXACTAMENTE el código que aparece antes de los dos puntos (:) en el catálogo
+   - Ejemplo: Si ves "credit_products_catalog: Catálogo de Productos", usa "credit_products_catalog"
+   - NO uses variaciones como "credit_products", "catalog_of_products", "product_catalog"
+   - NO traduzcas ni interpretes, usa el código EXACTO tal como aparece
 
 SCHEMA DE RESPUESTA (JSON):
 {{
@@ -164,7 +168,102 @@ CUÁNDO NO RECOMENDAR GRÁFICOS:
 - Cuando el usuario pide explícitamente sin gráfico
 - Formatos CSV o XLSX (solo PDF soporta gráficos incrustados)
 
-EJEMPLOS DE INTERPRETACIÓN:
+GUÍA DE INTERPRETACIÓN POR CATEGORÍA:
+
+=== CATEGORÍA: CREDITS (Créditos/Solicitudes/Préstamos) ===
+
+Cuando el usuario mencione: "créditos", "solicitudes", "préstamos", "aplicaciones", "loans"
+
+Reportes disponibles:
+1. loans_by_status - Para: "créditos por estado", "solicitudes aprobadas/rechazadas", "préstamos pendientes"
+2. loans_by_date_range - Para: "créditos del mes", "solicitudes de enero", "préstamos entre fechas"
+3. loans_by_branch - Para: "créditos por sucursal", "solicitudes por oficina", "préstamos por agencia"
+4. loans_by_product - Para: "créditos por producto", "solicitudes por tipo de préstamo"
+5. active_loans - Para: "créditos activos", "préstamos vigentes", "solicitudes desembolsadas"
+
+Ejemplos de frases del usuario:
+- "créditos aprobados" → loans_by_status + filtro status=APPROVED
+- "solicitudes del último mes" → loans_by_date_range + preset=last_month
+- "préstamos por sucursal" → loans_by_branch
+- "créditos de vivienda" → loans_by_product + filtro product_type
+- "solicitudes activas" → active_loans
+
+=== CATEGORÍA: CUSTOMERS (Clientes) ===
+
+Cuando el usuario mencione: "clientes", "usuarios", "personas", "customers"
+
+Reportes disponibles:
+1. customers_registered - Para: "clientes registrados", "nuevos clientes", "usuarios creados"
+2. customers_by_status - Para: "clientes por estado", "usuarios activos/inactivos", "clientes verificados"
+3. customers_with_active_loans - Para: "clientes con créditos", "usuarios con préstamos activos"
+
+Ejemplos de frases del usuario:
+- "clientes nuevos" → customers_registered + filtro created_at
+- "usuarios verificados" → customers_by_status + filtro kyc_status=VERIFIED
+- "clientes con créditos activos" → customers_with_active_loans
+- "personas registradas este mes" → customers_registered + preset=current_month
+
+=== CATEGORÍA: PRODUCTS (Productos Crediticios) ===
+
+Cuando el usuario mencione: "productos", "catálogo", "tipos de crédito", "productos crediticios", "productos disponibles"
+
+Reportes disponibles:
+1. credit_products_catalog - Para: "catálogo de productos", "lista de productos", "productos disponibles", "tipos de crédito"
+
+⚠️ IMPORTANTE: SIEMPRE usar el código exacto 'credit_products_catalog'
+NO usar: credit_products, catalog_of_products, product_catalog, productos_crediticios
+
+Ejemplos de frases del usuario:
+- "productos crediticios" → credit_products_catalog
+- "catálogo de productos" → credit_products_catalog
+- "lista de créditos disponibles" → credit_products_catalog
+- "tipos de préstamos" → credit_products_catalog
+- "productos del banco" → credit_products_catalog
+
+=== CATEGORÍA: DOCUMENTS (Documentos) ===
+
+Cuando el usuario mencione: "documentos", "archivos", "documentación pendiente"
+
+Reportes disponibles:
+1. applications_with_pending_documents - Para: "documentos pendientes", "solicitudes sin documentos", "documentación faltante"
+
+Ejemplos de frases del usuario:
+- "documentos pendientes" → applications_with_pending_documents
+- "solicitudes sin documentación" → applications_with_pending_documents + filtro document_status=PENDING
+
+=== CATEGORÍA: IDENTITY_VERIFICATION (Verificación de Identidad) ===
+
+Cuando el usuario mencione: "verificaciones", "identidad", "KYC", "validación de identidad"
+
+Reportes disponibles:
+1. verifications_by_status - Para: "verificaciones por estado", "validaciones de identidad", "KYC por resultado"
+
+Ejemplos de frases del usuario:
+- "verificaciones aprobadas" → verifications_by_status + filtro status=APPROVED
+- "validaciones pendientes" → verifications_by_status + filtro status=PENDING
+
+=== CATEGORÍA: TENANTS (Solo SAAS Admin) ===
+
+Cuando el usuario mencione: "instituciones", "tenants", "bancos", "entidades"
+
+Reportes disponibles:
+1. tenants_by_status - Para: "instituciones por estado", "tenants activos", "bancos registrados"
+
+=== CATEGORÍA: USERS (Solo SAAS Admin) ===
+
+Cuando el usuario mencione: "usuarios por tenant", "usuarios por institución"
+
+Reportes disponibles:
+1. users_by_tenant - Para: "usuarios por tenant", "usuarios por institución", "usuarios por banco"
+
+=== CATEGORÍA: SUBSCRIPTIONS (Solo SAAS Admin) ===
+
+Cuando el usuario mencione: "suscripciones", "planes", "pagos"
+
+Reportes disponibles:
+1. subscriptions_by_status - Para: "suscripciones activas", "planes por estado", "pagos pendientes"
+
+EJEMPLOS DE INTERPRETACIÓN COMPLETOS:
 
 Ejemplo 1 - Orden Clara con Gráfico:
 Orden: "Genera un reporte PDF de créditos aprobados del último mes agrupado por sucursal con gráfico de barras"
@@ -189,7 +288,33 @@ Respuesta:
   }},
   "missing_fields": [],
   "unsupported_terms": [],
-  "interpretation_notes": "Orden clara y completa. Reporte PDF con gráfico de barras."
+  "interpretation_notes": "Orden clara y completa. Reporte PDF con gráfico de barras. Usando código exacto 'loans_by_status' del catálogo."
+}}
+
+Ejemplo 1b - Catálogo de Productos (USO CORRECTO DEL CÓDIGO):
+Orden: "Dame un reporte de todos los productos crediticios disponibles"
+Respuesta:
+{{
+  "confidence": 0.95,
+  "scope": "TENANT",
+  "category": "PRODUCTS",
+  "report_type": "credit_products_catalog",
+  "date_range": {{"preset": null, "start_date": null, "end_date": null}},
+  "filters": [],
+  "columns": ["product_name", "product_code", "product_type", "min_amount", "max_amount", "is_active"],
+  "group_by": [],
+  "sort": [{{"field": "product_name", "direction": "asc"}}],
+  "format": "xlsx",
+  "visualization": {{
+    "requested": false,
+    "recommended": false,
+    "chart_type": "NONE",
+    "title": "",
+    "reason": "Formato XLSX no soporta gráficos"
+  }},
+  "missing_fields": [],
+  "unsupported_terms": [],
+  "interpretation_notes": "⚠️ CORRECTO: Usando 'credit_products_catalog' (código exacto del catálogo). NO usar 'credit_products', 'catalog_of_products' ni 'product_catalog'."
 }}
 
 Ejemplo 2 - PDF sin Mención de Gráfico (Recomendación Automática):
@@ -244,6 +369,58 @@ Respuesta:
   "interpretation_notes": "Reporte temporal con gráfico de líneas para mostrar tendencia."
 }}
 
+Ejemplo 2 - Clientes por Estado:
+Orden: "Dame un reporte de clientes verificados y pendientes"
+Respuesta:
+{{
+  "confidence": 0.88,
+  "scope": "TENANT",
+  "category": "CUSTOMERS",
+  "report_type": "customers_by_status",
+  "date_range": {{"preset": null, "start_date": null, "end_date": null}},
+  "filters": [{{"field": "kyc_status", "operator": "in", "value": ["VERIFIED", "PENDING"]}}],
+  "columns": ["full_name", "document_number", "email", "mobile_phone", "kyc_status", "is_active", "created_at"],
+  "group_by": [],
+  "sort": [{{"field": "created_at", "direction": "desc"}}],
+  "format": "xlsx",
+  "visualization": {{
+    "requested": false,
+    "recommended": false,
+    "chart_type": "NONE",
+    "title": "",
+    "reason": "Listado detallado sin agrupación"
+  }},
+  "missing_fields": ["date_range"],
+  "unsupported_terms": [],
+  "interpretation_notes": "⚠️ CORRECTO: Usando 'customers_by_status' para clientes por estado KYC."
+}}
+
+Ejemplo 3 - Créditos Activos:
+Orden: "Quiero ver todos los préstamos activos y desembolsados"
+Respuesta:
+{{
+  "confidence": 0.92,
+  "scope": "TENANT",
+  "category": "CREDITS",
+  "report_type": "active_loans",
+  "date_range": {{"preset": null, "start_date": null, "end_date": null}},
+  "filters": [{{"field": "status", "operator": "in", "value": ["APPROVED", "DISBURSED"]}}],
+  "columns": ["application_number", "client_name", "product_name", "approved_amount", "term_months", "branch_name", "disbursed_at"],
+  "group_by": [],
+  "sort": [{{"field": "disbursed_at", "direction": "desc"}}],
+  "format": "xlsx",
+  "visualization": {{
+    "requested": false,
+    "recommended": false,
+    "chart_type": "NONE",
+    "title": "",
+    "reason": "Listado detallado de créditos activos"
+  }},
+  "missing_fields": [],
+  "unsupported_terms": [],
+  "interpretation_notes": "⚠️ CORRECTO: Usando 'active_loans' para créditos activos y desembolsados."
+}}
+
 Ejemplo 4 - Excel sin Gráfico:
 Orden: "Exporta los créditos aprobados a Excel"
 Respuesta:
@@ -268,6 +445,162 @@ Respuesta:
   "missing_fields": ["date_range"],
   "unsupported_terms": [],
   "interpretation_notes": "Excel solicitado, sin gráfico. Recomendable especificar rango de fechas."
+}}
+
+Ejemplo 5 - Clientes Registrados:
+Orden: "Dame un reporte de clientes nuevos del último mes"
+Respuesta:
+{{
+  "confidence": 0.90,
+  "scope": "TENANT",
+  "category": "CUSTOMERS",
+  "report_type": "customers_registered",
+  "date_range": {{"preset": "last_month", "start_date": null, "end_date": null}},
+  "filters": [],
+  "columns": ["full_name", "document_number", "email", "mobile_phone", "kyc_status", "created_at"],
+  "group_by": [],
+  "sort": [{{"field": "created_at", "direction": "desc"}}],
+  "format": "xlsx",
+  "visualization": {{
+    "requested": false,
+    "recommended": false,
+    "chart_type": "NONE",
+    "title": "",
+    "reason": "Listado detallado sin agrupación, no requiere gráfico"
+  }},
+  "missing_fields": [],
+  "unsupported_terms": [],
+  "interpretation_notes": "⚠️ CORRECTO: Usando 'customers_registered' para clientes nuevos."
+}}
+
+Ejemplo 6 - Créditos por Sucursal con Gráfico:
+Orden: "Muéstrame los créditos por sucursal del último trimestre en PDF"
+Respuesta:
+{{
+  "confidence": 0.92,
+  "scope": "TENANT",
+  "category": "CREDITS",
+  "report_type": "loans_by_branch",
+  "date_range": {{"preset": "last_quarter", "start_date": null, "end_date": null}},
+  "filters": [],
+  "columns": ["branch_name", "total_applications", "approved_count", "rejected_count", "total_approved_amount", "approval_rate"],
+  "group_by": ["branch_name"],
+  "sort": [{{"field": "total_applications", "direction": "desc"}}],
+  "format": "pdf",
+  "visualization": {{
+    "requested": false,
+    "recommended": true,
+    "chart_type": "HORIZONTAL_BAR",
+    "title": "Créditos por Sucursal",
+    "reason": "Comparación entre sucursales, gráfico de barras horizontales ideal para nombres largos"
+  }},
+  "missing_fields": [],
+  "unsupported_terms": [],
+  "interpretation_notes": "⚠️ CORRECTO: Usando 'loans_by_branch' para créditos por sucursal. PDF con gráfico recomendado."
+}}
+
+Ejemplo 7 - Créditos por Producto:
+Orden: "Quiero ver las solicitudes agrupadas por tipo de producto"
+Respuesta:
+{{
+  "confidence": 0.88,
+  "scope": "TENANT",
+  "category": "CREDITS",
+  "report_type": "loans_by_product",
+  "date_range": {{"preset": null, "start_date": null, "end_date": null}},
+  "filters": [],
+  "columns": ["product_name", "product_type", "total_applications", "approved_count", "rejected_count", "approval_rate"],
+  "group_by": ["product_name"],
+  "sort": [{{"field": "total_applications", "direction": "desc"}}],
+  "format": "xlsx",
+  "visualization": {{
+    "requested": false,
+    "recommended": false,
+    "chart_type": "NONE",
+    "title": "",
+    "reason": "Formato XLSX no soporta gráficos"
+  }},
+  "missing_fields": ["date_range"],
+  "unsupported_terms": [],
+  "interpretation_notes": "⚠️ CORRECTO: Usando 'loans_by_product' para solicitudes por producto."
+}}
+
+Ejemplo 8 - Clientes con Créditos Activos:
+Orden: "Lista de clientes que tienen préstamos activos"
+Respuesta:
+{{
+  "confidence": 0.90,
+  "scope": "TENANT",
+  "category": "CUSTOMERS",
+  "report_type": "customers_with_active_loans",
+  "date_range": {{"preset": null, "start_date": null, "end_date": null}},
+  "filters": [],
+  "columns": ["client_name", "client_document", "client_email", "total_active_loans", "total_approved_amount", "risk_level"],
+  "group_by": [],
+  "sort": [{{"field": "total_approved_amount", "direction": "desc"}}],
+  "format": "xlsx",
+  "visualization": {{
+    "requested": false,
+    "recommended": false,
+    "chart_type": "NONE",
+    "title": "",
+    "reason": "Listado detallado sin agrupación"
+  }},
+  "missing_fields": [],
+  "unsupported_terms": [],
+  "interpretation_notes": "⚠️ CORRECTO: Usando 'customers_with_active_loans' para clientes con préstamos activos."
+}}
+
+Ejemplo 9 - Documentos Pendientes:
+Orden: "Solicitudes con documentos pendientes"
+Respuesta:
+{{
+  "confidence": 0.92,
+  "scope": "TENANT",
+  "category": "DOCUMENTS",
+  "report_type": "applications_with_pending_documents",
+  "date_range": {{"preset": null, "start_date": null, "end_date": null}},
+  "filters": [{{"field": "document_status", "operator": "in", "value": ["PENDING"]}}],
+  "columns": ["application_number", "client_name", "product_name", "pending_documents_count", "completion_percentage", "days_since_submission"],
+  "group_by": [],
+  "sort": [{{"field": "days_since_submission", "direction": "desc"}}],
+  "format": "xlsx",
+  "visualization": {{
+    "requested": false,
+    "recommended": false,
+    "chart_type": "NONE",
+    "title": "",
+    "reason": "Listado detallado de seguimiento"
+  }},
+  "missing_fields": [],
+  "unsupported_terms": [],
+  "interpretation_notes": "⚠️ CORRECTO: Usando 'applications_with_pending_documents' para documentos pendientes."
+}}
+
+Ejemplo 10 - Verificaciones de Identidad:
+Orden: "Reporte de verificaciones de identidad aprobadas y rechazadas"
+Respuesta:
+{{
+  "confidence": 0.90,
+  "scope": "TENANT",
+  "category": "IDENTITY_VERIFICATION",
+  "report_type": "verifications_by_status",
+  "date_range": {{"preset": null, "start_date": null, "end_date": null}},
+  "filters": [{{"field": "status", "operator": "in", "value": ["APPROVED", "DECLINED"]}}],
+  "columns": ["client_name", "client_document", "application_number", "status", "decision", "provider", "completed_at"],
+  "group_by": [],
+  "sort": [{{"field": "completed_at", "direction": "desc"}}],
+  "format": "xlsx",
+  "visualization": {{
+    "requested": false,
+    "recommended": false,
+    "chart_type": "NONE",
+    "title": "",
+    "reason": "Listado detallado"
+  }},
+  "missing_fields": ["date_range"],
+  "unsupported_terms": [],
+  "interpretation_notes": "⚠️ CORRECTO: Usando 'verifications_by_status' para verificaciones de identidad."
 }}
 
 Ejemplo 2 - Orden Ambigua:
@@ -377,9 +710,10 @@ def _format_available_reports(available_reports: Dict[str, List[Dict]]) -> str:
             else:
                 columns_text = "No especificados"
             
-            lines.append(f"  - {report_type}: {name}")
+            lines.append(f"  - CÓDIGO: '{report_type}' | NOMBRE: {name}")
             lines.append(f"    Descripción: {description}")
             lines.append(f"    Campos disponibles: {columns_text}")
+            lines.append(f"    ⚠️ IMPORTANTE: Usa EXACTAMENTE el código '{report_type}' en report_type")
     
     return '\n'.join(lines)
 

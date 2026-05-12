@@ -335,6 +335,9 @@ class ReportConfigSerializer(serializers.Serializer):
         
         logger.info(f"Validando configuración de reporte: {attrs}")
         
+        # Normalizar report_type usando alias comunes
+        attrs = self._normalize_report_type(attrs)
+        
         from api.reports.services.report_schema import ReportSchemaService
         
         schema_service = ReportSchemaService()
@@ -345,6 +348,51 @@ class ReportConfigSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'config': errors
             })
+        
+        return attrs
+    
+    def _normalize_report_type(self, attrs):
+        """
+        Normaliza el report_type usando alias comunes.
+        
+        Mapea nombres alternativos al código correcto del reporte.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Diccionario de alias comunes
+        REPORT_ALIASES = {
+            'TENANT': {
+                'PRODUCTS': {
+                    'credit_products': 'credit_products_catalog',
+                    'catalog_of_products': 'credit_products_catalog',
+                    'product_catalog': 'credit_products_catalog',
+                    'productos_crediticios': 'credit_products_catalog',
+                    'productos': 'credit_products_catalog',
+                    'catalogo_productos': 'credit_products_catalog',
+                    'catalogo_de_productos': 'credit_products_catalog',
+                },
+                'CREDITS': {
+                    'creditos': 'loans_by_status',
+                    'solicitudes': 'loans_by_status',
+                    'prestamos': 'loans_by_status',
+                },
+                'CUSTOMERS': {
+                    'clientes': 'customers_by_status',
+                },
+            }
+        }
+        
+        scope = attrs.get('scope')
+        category = attrs.get('category')
+        report_type = attrs.get('report_type')
+        
+        if scope and category and report_type:
+            aliases = REPORT_ALIASES.get(scope, {}).get(category, {})
+            if report_type in aliases:
+                original = report_type
+                attrs['report_type'] = aliases[report_type]
+                logger.info(f"Normalizando report_type: '{original}' → '{attrs['report_type']}'")
         
         return attrs
 
