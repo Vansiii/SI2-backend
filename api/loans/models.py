@@ -892,3 +892,14 @@ from api.loans.models_documents import (
     LoanApplicationDocumentRequirement,
     DocumentReviewHistory,
 )
+
+# Importar modelos de catálogos
+from api.loans.models_catalogs import (
+    ProductType,
+    AmortizationSystem,
+    PaymentFrequency,
+    Currency,
+    DocumentType,
+    GuaranteeType,
+)story,
+)
