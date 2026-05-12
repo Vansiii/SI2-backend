@@ -237,6 +237,7 @@ SIMPLE_JWT = {
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
+    'SLIDING_WINDOW_RESTRICTION_ID_FIELD': 'id',
 }
 
 # REST Framework Configuration

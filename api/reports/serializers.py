@@ -537,7 +537,7 @@ class VoiceReportInterpretResponseSerializer(serializers.Serializer):
         default=list
     )
     interpretation_notes = serializers.CharField(allow_blank=True)
-    confidence = serializers.FloatField(min_value=0.0, max_value=1.0)
+    confidence = serializers.FloatField(min_value=0, max_value=1)
     visualization = VisualizationConfigSerializer(required=False, allow_null=True)
 
 

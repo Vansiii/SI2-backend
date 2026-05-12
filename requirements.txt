@@ -5,7 +5,7 @@ attrs==26.1.0
 cachetools==6.2.6
 certifi==2026.2.25
 cffi==2.0.0
-chardet==7.4.3
+chardet==5.2.0
 charset-normalizer==3.4.7
 click==8.3.3
 colorama==0.4.6
@@ -93,7 +93,7 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2026.2
 uritemplate==4.2.0
-urllib3==2.6.3
+urllib3==2.2.3
 websockets==15.0.1
 whitenoise==6.12.0
 yarl==1.23.0
