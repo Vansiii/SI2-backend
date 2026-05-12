@@ -57,6 +57,11 @@ class WorkflowService:
         """
         Realiza una transición de estado de una solicitud.
         
+        FASE 2 - Backend Robusto:
+        - Logging mejorado con prefijo [WORKFLOW]
+        - Manejo robusto de errores
+        - Validación exhaustiva
+        
         Args:
             loan_application_id: ID de la solicitud
             to_status: Estado destino
@@ -82,20 +87,34 @@ class WorkflowService:
                 id=loan_application_id
             )
         except LoanApplication.DoesNotExist:
+            logger.error(f"[WORKFLOW] Solicitud {loan_application_id} no encontrada")
             raise ValidationError(f"Solicitud {loan_application_id} no encontrada")
         
         from_status = application.status
         
         logger.info(
-            f"Iniciando transición: Solicitud {loan_application_id} "
+            f"[WORKFLOW] Iniciando transición: Solicitud {loan_application_id} "
             f"de {from_status} a {to_status}"
         )
         
         # Validar transición
-        WorkflowService.validate_transition(application, to_status)
+        try:
+            WorkflowService.validate_transition(application, to_status)
+        except ValidationError as e:
+            logger.error(
+                f"[WORKFLOW] Transición inválida para solicitud {loan_application_id}: {str(e)}"
+            )
+            raise
         
         # Ejecutar acciones pre-transición
-        WorkflowService._execute_pre_transition_actions(application, to_status)
+        try:
+            WorkflowService._execute_pre_transition_actions(application, to_status)
+        except Exception as e:
+            logger.error(
+                f"[WORKFLOW] Error en acciones pre-transición: {str(e)}",
+                exc_info=True
+            )
+            # Continuar con la transición aunque fallen las acciones pre
         
         # Obtener configuración de la etapa destino
         stage_config = WorkflowService._get_stage_config(application, to_status)
@@ -114,27 +133,41 @@ class WorkflowService:
             action_url = action_url or stage_config.client_action_url
         
         # Crear evento en timeline
-        application.add_timeline_event(
-            to_status=to_status,
-            changed_by=changed_by,
-            notes=notes,
-            is_visible_to_client=True,
-            client_message=client_message,
-            requires_client_action=requires_client_action,
-            action_description=action_description,
-            action_url=action_url,
-            send_notification=send_notification
-        )
+        try:
+            application.add_timeline_event(
+                to_status=to_status,
+                changed_by=changed_by,
+                notes=notes,
+                is_visible_to_client=True,
+                client_message=client_message,
+                requires_client_action=requires_client_action,
+                action_description=action_description,
+                action_url=action_url,
+                send_notification=send_notification
+            )
+        except Exception as e:
+            logger.error(
+                f"[WORKFLOW] Error creando evento en timeline: {str(e)}",
+                exc_info=True
+            )
+            raise
         
         # Ejecutar acciones post-transición
-        WorkflowService._execute_post_transition_actions(application, to_status)
+        try:
+            WorkflowService._execute_post_transition_actions(application, to_status)
+        except Exception as e:
+            logger.error(
+                f"[WORKFLOW] Error en acciones post-transición: {str(e)}",
+                exc_info=True
+            )
+            # Continuar aunque fallen las acciones post
         
         # Verificar si puede avanzar automáticamente
         if stage_config and stage_config.auto_advance_enabled:
             WorkflowService._schedule_auto_advance_check(application)
         
         logger.info(
-            f"Transición completada: Solicitud {loan_application_id} "
+            f"[WORKFLOW] Transición completada: Solicitud {loan_application_id} "
             f"ahora en estado {to_status}"
         )
         
@@ -143,7 +176,12 @@ class WorkflowService:
     @staticmethod
     def validate_transition(loan_application, to_status: str):
         """
-        Valida que una transición sea válida.
+        Valida que una transición sea válida basándose en el workflow dinámico.
+        
+        VALIDACIÓN DINÁMICA:
+        - Verifica que el estado destino esté en los estados válidos siguientes
+        - Valida prerrequisitos basándose en el ORDEN del workflow configurado
+        - NO asume un orden fijo (ej: documentos antes de KYC)
         
         Args:
             loan_application: LoanApplication instance
@@ -163,24 +201,13 @@ class WorkflowService:
                 f"Estados válidos desde {from_status}: {', '.join(valid_next_states)}"
             )
         
-        # Validaciones específicas por transición
-        if to_status == 'KYC':
-            # Verificar que los documentos estén completos
-            if loan_application.documents_status != 'COMPLETE':
-                raise ValidationError(
-                    "No se puede pasar a KYC sin completar los documentos obligatorios"
-                )
+        # Validaciones dinámicas basadas en el orden del workflow
+        WorkflowService._validate_prerequisites_dynamic(loan_application, to_status)
         
-        if to_status == 'SCORING':
-            # Verificar que KYC esté aprobado
-            if loan_application.identity_verification_status != 'APPROVED':
-                raise ValidationError(
-                    "No se puede pasar a SCORING sin aprobar la verificación de identidad"
-                )
-        
+        # Validaciones específicas de estados finales
         if to_status == 'APPROVED':
             # Verificar que tenga score calculado (si aplica)
-            if not hasattr(loan_application, 'credit_score'):
+            if hasattr(loan_application, 'credit_score') and not loan_application.credit_score:
                 raise ValidationError(
                     "No se puede aprobar sin calcular el score crediticio"
                 )
@@ -191,6 +218,78 @@ class WorkflowService:
                 raise ValidationError(
                     "Solo se pueden desembolsar solicitudes aprobadas"
                 )
+    
+    @staticmethod
+    def _validate_prerequisites_dynamic(loan_application, to_status: str):
+        """
+        Valida prerrequisitos de forma dinámica basándose en el orden del workflow.
+        
+        Esta validación verifica que todas las etapas ANTERIORES en el workflow
+        estén completadas antes de permitir avanzar a la etapa destino.
+        
+        Ejemplo:
+        - Si el workflow es: SUBMITTED → DOCUMENTS → KYC → SCORING
+          Y quiero ir a KYC, valida que DOCUMENTS esté completo
+        
+        - Si el workflow es: SUBMITTED → KYC → DOCUMENTS → SCORING
+          Y quiero ir a DOCUMENTS, valida que KYC esté completo
+        
+        Args:
+            loan_application: LoanApplication instance
+            to_status: Estado destino
+        
+        Raises:
+            ValidationError: Si faltan prerrequisitos
+        """
+        # Si no hay workflow configurado, no validar prerrequisitos
+        if not loan_application.rule_set_snapshot:
+            logger.warning(
+                f"[WORKFLOW] Solicitud {loan_application.id} sin rule_set_snapshot. "
+                f"Saltando validación de prerrequisitos."
+            )
+            return
+        
+        # Obtener todas las etapas del workflow ordenadas
+        workflow_stages = loan_application.rule_set_snapshot.workflow_stages.order_by('order')
+        
+        # Encontrar la posición de la etapa destino
+        target_stage = workflow_stages.filter(stage_code=to_status).first()
+        if not target_stage:
+            # Si no está en el workflow, permitir (puede ser un estado especial)
+            return
+        
+        # Obtener todas las etapas anteriores a la etapa destino
+        previous_stages = workflow_stages.filter(order__lt=target_stage.order)
+        
+        # Validar que las etapas anteriores estén completadas
+        for stage in previous_stages:
+            # Saltar etapas opcionales o de sistema
+            if stage.stage_code in ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'REVIEW', 'OBSERVED']:
+                continue
+            
+            # Validar según el tipo de etapa
+            if stage.stage_code == 'DOCUMENTS':
+                if loan_application.documents_status != 'COMPLETE':
+                    raise ValidationError([
+                        f"No se puede pasar a {target_stage.stage_name} sin completar los documentos obligatorios"
+                    ])
+            
+            elif stage.stage_code == 'KYC':
+                if loan_application.identity_verification_status != 'APPROVED':
+                    raise ValidationError([
+                        f"No se puede pasar a {target_stage.stage_name} sin completar la verificación de identidad"
+                    ])
+            
+            elif stage.stage_code == 'SCORING':
+                if not hasattr(loan_application, 'credit_score') or not loan_application.credit_score:
+                    raise ValidationError([
+                        f"No se puede pasar a {target_stage.stage_name} sin completar el scoring crediticio"
+                    ])
+        
+        logger.info(
+            f"[WORKFLOW] Prerrequisitos validados para transición a {to_status} "
+            f"en solicitud {loan_application.id}"
+        )
     
     @staticmethod
     def _get_valid_next_states(loan_application) -> List[str]:

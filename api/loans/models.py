@@ -413,25 +413,24 @@ class LoanApplication(TenantModel):
     # Métodos para CU-09 y CU-12
     def create_document_checklist(self):
         """
-        Crea el checklist de documentos basándose en el rule_set_snapshot.
+        Crea el checklist de documentos basándose en los documentos requeridos del producto.
         
         Se ejecuta automáticamente al crear la solicitud.
         """
-        if not self.rule_set_snapshot:
-            return
-        
         from api.loans.models_documents import LoanApplicationDocumentRequirement
+        from api.products.models import ProductDocumentRequirement
         
-        requirements = self.rule_set_snapshot.document_requirements.filter(
-            product=self.product
-        )
+        requirements = ProductDocumentRequirement.objects.filter(
+            product=self.product,
+            institution=self.institution
+        ).select_related('document_type').order_by('display_order')
         
         for req in requirements:
             LoanApplicationDocumentRequirement.objects.create(
                 institution=self.institution,
                 loan_application=self,
-                document_requirement=req,
-                status='PENDING'
+                product_document_requirement=req,
+                status=LoanApplicationDocumentRequirement.Status.PENDING
             )
     
     def check_documents_complete(self):
@@ -444,12 +443,58 @@ class LoanApplication(TenantModel):
         from api.loans.models_documents import LoanApplicationDocumentRequirement
         
         mandatory_docs = self.document_checklist.filter(
-            document_requirement__is_mandatory=True
+            product_document_requirement__is_mandatory=True
         )
         
-        return not mandatory_docs.exclude(
-            status='APPROVED'
+        if not mandatory_docs.exists():
+            # No hay documentos obligatorios
+            return True
+        
+        # Verificar que todos los obligatorios estén aprobados
+        all_approved = not mandatory_docs.exclude(
+            status=LoanApplicationDocumentRequirement.Status.APPROVED
         ).exists()
+        
+        return all_approved
+    
+    def update_documents_status(self):
+        """
+        Actualiza el estado de documentos basándose en el checklist.
+        
+        Lógica:
+        - NOT_REQUIRED: Si no hay documentos requeridos
+        - PENDING: Si hay documentos pendientes de carga
+        - COMPLETE: Si todos los documentos obligatorios están aprobados
+        - OBSERVED: Si hay documentos rechazados
+        """
+        from api.loans.models_documents import LoanApplicationDocumentRequirement
+        
+        all_docs = self.document_checklist.all()
+        
+        if not all_docs.exists():
+            self.documents_status = self.DocumentsStatus.NOT_REQUIRED
+            self.save(update_fields=['documents_status'])
+            return
+        
+        # Verificar si hay documentos rechazados
+        rejected_count = all_docs.filter(
+            status=LoanApplicationDocumentRequirement.Status.REJECTED
+        ).count()
+        
+        if rejected_count > 0:
+            self.documents_status = self.DocumentsStatus.OBSERVED
+            self.save(update_fields=['documents_status'])
+            return
+        
+        # Verificar si todos los obligatorios están aprobados
+        if self.check_documents_complete():
+            self.documents_status = self.DocumentsStatus.COMPLETE
+            self.save(update_fields=['documents_status'])
+            return
+        
+        # Por defecto, pendiente
+        self.documents_status = self.DocumentsStatus.PENDING
+        self.save(update_fields=['documents_status'])
     
     def get_pending_documents(self):
         """

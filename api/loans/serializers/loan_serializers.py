@@ -187,25 +187,30 @@ class CreateLoanApplicationSerializer(serializers.ModelSerializer):
         term_months = data.get('term_months')
         
         # Validar que el monto esté dentro del rango del producto
-        if product:
-            if requested_amount < product.min_amount:
-                raise serializers.ValidationError({
-                    'requested_amount': f'El monto mínimo para este producto es ${product.min_amount}'
-                })
-            if requested_amount > product.max_amount:
-                raise serializers.ValidationError({
-                    'requested_amount': f'El monto máximo para este producto es ${product.max_amount}'
-                })
-            
-            # Validar que el plazo esté dentro del rango del producto
-            if term_months < product.min_term_months:
-                raise serializers.ValidationError({
-                    'term_months': f'El plazo mínimo para este producto es {product.min_term_months} meses'
-                })
-            if term_months > product.max_term_months:
-                raise serializers.ValidationError({
-                    'term_months': f'El plazo máximo para este producto es {product.max_term_months} meses'
-                })
+        if product and product.rule_set:
+            try:
+                params = product.rule_set.product_parameters.first()
+                if params:
+                    if requested_amount < params.min_amount:
+                        raise serializers.ValidationError({
+                            'requested_amount': f'El monto mínimo para este producto es ${params.min_amount}'
+                        })
+                    if requested_amount > params.max_amount:
+                        raise serializers.ValidationError({
+                            'requested_amount': f'El monto máximo para este producto es ${params.max_amount}'
+                        })
+                    
+                    # Validar que el plazo esté dentro del rango del producto
+                    if term_months < params.min_term_months:
+                        raise serializers.ValidationError({
+                            'term_months': f'El plazo mínimo para este producto es {params.min_term_months} meses'
+                        })
+                    if term_months > params.max_term_months:
+                        raise serializers.ValidationError({
+                            'term_months': f'El plazo máximo para este producto es {params.max_term_months} meses'
+                        })
+            except Exception as e:
+                logger.warning(f"No se pudieron validar parámetros del producto: {e}")
         
         return data
     

@@ -36,19 +36,56 @@ class ClientDocumentViewSet(viewsets.ReadOnlyModelViewSet):
     parser_classes = [MultiPartParser, FormParser]
     
     def get_queryset(self):
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # Solo documentos de solicitudes del cliente
         # Verificar si el usuario tiene un cliente asociado
-        if not hasattr(self.request.user, 'client'):
+        client = None
+        if hasattr(self.request.user, 'client_profile'):
+            client = self.request.user.client_profile
+        elif hasattr(self.request.user, 'client'):
+            client = self.request.user.client
+            
+        if not client:
+            logger.warning(f"[DOCUMENTS] Usuario {self.request.user.id} no tiene cliente asociado")
             return LoanApplicationDocumentRequirement.objects.none()
         
-        return LoanApplicationDocumentRequirement.objects.filter(
+        queryset = LoanApplicationDocumentRequirement.objects.filter(
             institution=self.request.tenant,
-            loan_application__client=self.request.user.client
+            loan_application__client=client
         ).select_related(
             'product_document_requirement',
             'file_resource',
             'loan_application'
         )
+        
+        # Log para debugging
+        loan_app_id = self.request.query_params.get('loan_application')
+        if loan_app_id:
+            count = queryset.filter(loan_application_id=loan_app_id).count()
+            logger.info(
+                f"[DOCUMENTS] Solicitud {loan_app_id}: {count} documentos encontrados "
+                f"(Usuario: {self.request.user.id}, Cliente: {client.id})"
+            )
+            
+            # Verificar si existen ProductDocumentRequirement para el producto
+            from api.loans.models import LoanApplication
+            try:
+                app = LoanApplication.objects.get(id=loan_app_id)
+                from api.products.models import ProductDocumentRequirement
+                prod_docs = ProductDocumentRequirement.objects.filter(
+                    product=app.product,
+                    institution=self.request.tenant
+                ).count()
+                logger.info(
+                    f"[DOCUMENTS] Producto {app.product.name} (ID: {app.product_id}) "
+                    f"tiene {prod_docs} documentos configurados"
+                )
+            except Exception as e:
+                logger.error(f"[DOCUMENTS] Error verificando producto: {e}")
+        
+        return queryset
 
     
     @action(detail=True, methods=['post'])

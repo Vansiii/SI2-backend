@@ -229,10 +229,27 @@ class IdentityVerification(TenantModel):
 		return self.status == self.Status.DECLINED and self.decision == self.Decision.DECLINED
 	
 	def mark_approved(self, data: dict = None) -> None:
-		"""Marca la verificación como aprobada y actualiza la solicitud de crédito"""
+		"""
+		Marca la verificación como aprobada y actualiza la solicitud de crédito.
+		
+		FASE 3 - Transición Automática con Workflow:
+		- Logging detallado con prefijo [KYC]
+		- Manejo robusto de errores
+		- Validación de credit_application
+		- Creación de snapshot de rule_set si no existe
+		- Transición automática inteligente:
+		  * Si está en SUBMITTED, transiciona a KYC y luego a la siguiente etapa de KYC
+		  * Si está en otro estado, transiciona a la siguiente etapa configurada
+		- Fallbacks cuando falla la transición
+		"""
+		import logging
+		logger = logging.getLogger(__name__)
+		
+		# 1. Actualizar estado de verificación
 		self.status = self.Status.APPROVED
 		self.decision = self.Decision.APPROVED
 		self.completed_at = timezone.now()
+		
 		if data:
 			# Extraer campos del resultado sin datos sensibles
 			self.full_name = data.get('full_name') or self.full_name
@@ -243,103 +260,256 @@ class IdentityVerification(TenantModel):
 			self.document_number = data.get('document_number', self.document_number)
 			self.date_of_birth = data.get('date_of_birth', self.date_of_birth)
 			self.country = data.get('country', self.country)
+		
 		self.save()
 		
-		# Actualizar solicitud de crédito si existe
-		if self.credit_application:
-			from api.loans.models import LoanApplication
-			self.credit_application.identity_verification_status = LoanApplication.IdentityVerificationStatus.APPROVED
-			self.credit_application.save(update_fields=['identity_verification_status', 'updated_at'])
-			
-			# Transicionar automáticamente según el workflow configurado del producto
-			try:
-				from api.loans.services.workflow_service import WorkflowService
-				
-				# Solo transicionar si está en SUBMITTED
-				if self.credit_application.status == 'SUBMITTED':
-					# Obtener la siguiente etapa según el workflow configurado del producto
-					next_stage = self._get_next_stage_after_identity_verification(self.credit_application)
-					
-					if next_stage:
-						WorkflowService.transition_state(
-							loan_application_id=self.credit_application.id,
-							to_status=next_stage,
-							changed_by=None,  # Sistema
-							notes='Transición automática después de verificación de identidad aprobada con DIDIT',
-							client_message='¡Tu identidad ha sido verificada exitosamente! Ahora puedes continuar con el siguiente paso.',
-							requires_client_action=True,
-							action_description='Continuar con el proceso de solicitud',
-							send_notification=True
-						)
-						import logging
-						logger = logging.getLogger(__name__)
-						logger.info(f'Solicitud {self.credit_application.id} transicionada a {next_stage} después de verificación de identidad')
-					else:
-						# Si no hay workflow configurado, solo crear evento en timeline
-						from api.loans.models import LoanApplicationStatusHistory
-						LoanApplicationStatusHistory.objects.create(
-							institution=self.credit_application.institution,
-							application=self.credit_application,
-							previous_status=self.credit_application.status,
-							new_status=self.credit_application.status,
-							title='Identidad verificada',
-							description='La identidad del cliente fue verificada exitosamente con DIDIT',
-							actor=self.user,
-							is_visible_to_borrower=True,
-							client_message='Tu identidad ha sido verificada exitosamente.'
-						)
-				else:
-					# Si no está en SUBMITTED, solo crear evento en timeline
-					from api.loans.models import LoanApplicationStatusHistory
-					LoanApplicationStatusHistory.objects.create(
-						institution=self.credit_application.institution,
-						application=self.credit_application,
-						previous_status=self.credit_application.status,
-						new_status=self.credit_application.status,
-						title='Identidad verificada',
-						description='La identidad del cliente fue verificada exitosamente con DIDIT',
-						actor=self.user,
-						is_visible_to_borrower=True,
-						client_message='Tu identidad ha sido verificada exitosamente.'
-					)
-			except Exception as e:
-				import logging
-				logger = logging.getLogger(__name__)
-				logger.error(f'Error en transición después de verificación de identidad: {e}', exc_info=True)
-	
-	def _get_next_stage_after_identity_verification(self, loan_application):
-		"""
-		Obtiene la siguiente etapa del workflow después de verificar identidad.
+		logger.info(
+			f"[KYC] Verificación {self.id} marcada como APPROVED para usuario {self.user.email}"
+		)
 		
-		Busca en el workflow configurado del producto la etapa SUBMITTED
-		y retorna su next_stage_on_success.
+		# 2. Actualizar solicitud de crédito si existe
+		if not self.credit_application:
+			logger.warning(
+				f"[KYC] IdentityVerification {self.id} no tiene credit_application asociada"
+			)
+			return
+		
+		from api.loans.models import LoanApplication
+		
+		# Actualizar identity_verification_status
+		self.credit_application.identity_verification_status = \
+			LoanApplication.IdentityVerificationStatus.APPROVED
+		self.credit_application.save(
+			update_fields=['identity_verification_status', 'updated_at']
+		)
+		
+		logger.info(
+			f"[KYC] Verificación {self.id} aprobada para solicitud {self.credit_application.id}. "
+			f"Estado actual: {self.credit_application.status}"
+		)
+		
+		# 3. Intentar transición automática al siguiente estado del workflow
+		try:
+			from api.loans.services.workflow_service import WorkflowService
+			
+			# Estrategia de transición inteligente:
+			# Si la solicitud está en SUBMITTED y el workflow indica que debe ir a KYC,
+			# pero el KYC ya está completado, avanzar directamente a la siguiente etapa de KYC
+			
+			current_status = self.credit_application.status
+			
+			# Obtener la siguiente etapa desde el estado actual
+			next_stage_from_current = self._get_next_stage_from_status(
+				self.credit_application, 
+				current_status
+			)
+			
+			# Si la siguiente etapa es KYC, obtener la siguiente etapa de KYC
+			if next_stage_from_current == 'KYC':
+				logger.info(
+					f"[KYC] La siguiente etapa desde {current_status} es KYC, "
+					f"pero KYC ya está completado. Buscando siguiente etapa de KYC..."
+				)
+				
+				# Obtener la siguiente etapa después de KYC
+				next_stage_after_kyc = self._get_next_stage_from_status(
+					self.credit_application,
+					'KYC'
+				)
+				
+				if next_stage_after_kyc:
+					logger.info(
+						f"[KYC] Transicionando directamente de {current_status} a {next_stage_after_kyc} "
+						f"(saltando KYC porque ya está completado)"
+					)
+					
+					WorkflowService.transition_state(
+						loan_application_id=self.credit_application.id,
+						to_status=next_stage_after_kyc,
+						changed_by=None,  # Sistema
+						notes=f'Transición automática después de completar verificación KYC',
+						client_message='Tu identidad ha sido verificada exitosamente. Continuamos con el siguiente paso.',
+						requires_client_action=True,
+						send_notification=True
+					)
+					
+					logger.info(
+						f"[KYC] Transición automática exitosa: solicitud {self.credit_application.id} "
+						f"ahora en estado {next_stage_after_kyc}"
+					)
+				else:
+					logger.warning(
+						f"[KYC] No se pudo determinar siguiente etapa después de KYC. "
+						f"Creando evento en timeline sin transición."
+					)
+					self._create_identity_verified_timeline_event()
+			
+			elif next_stage_from_current:
+				logger.info(
+					f"[KYC] Transicionando de {current_status} a {next_stage_from_current}"
+				)
+				
+				WorkflowService.transition_state(
+					loan_application_id=self.credit_application.id,
+					to_status=next_stage_from_current,
+					changed_by=None,  # Sistema
+					notes=f'Transición automática después de completar verificación KYC',
+					client_message='Tu identidad ha sido verificada exitosamente. Continuamos con el proceso.',
+					requires_client_action=False,
+					send_notification=True
+				)
+				
+				logger.info(
+					f"[KYC] Transición automática exitosa: solicitud {self.credit_application.id} "
+					f"ahora en estado {next_stage_from_current}"
+				)
+			else:
+				logger.warning(
+					f"[KYC] No se pudo determinar siguiente etapa para solicitud {self.credit_application.id}. "
+					f"Creando evento en timeline sin transición."
+				)
+				self._create_identity_verified_timeline_event()
+				
+		except Exception as e:
+			logger.error(
+				f"[KYC] Error en transición automática para solicitud {self.credit_application.id}: "
+				f"{type(e).__name__}: {str(e)}",
+				exc_info=True
+			)
+			# Fallback: crear evento en timeline sin transición
+			self._create_identity_verified_timeline_event()
+	
+	def _get_next_stage_from_status(self, loan_application, from_status: str):
+		"""
+		Obtiene la siguiente etapa del workflow desde un estado específico.
+		
+		FASE 3 - Transición Dinámica:
+		- Busca la etapa especificada en el workflow configurado
+		- Retorna su next_stage_on_success
+		- Múltiples fallbacks para garantizar transición
 		
 		Args:
 			loan_application: LoanApplication instance
+			from_status: Código del estado desde el cual buscar la siguiente etapa
 			
 		Returns:
 			str: Código de la siguiente etapa o None
 		"""
+		import logging
+		logger = logging.getLogger(__name__)
+		
+		# Verificar si hay rule_set_snapshot
 		if not loan_application.rule_set_snapshot:
-			# Sin workflow configurado, usar transición por defecto
-			return 'IN_REVIEW'
+			logger.warning(
+				f"[KYC] Solicitud {loan_application.id} no tiene rule_set_snapshot. "
+				f"Verificando product.rule_set..."
+			)
+			
+			# Intentar obtener del producto
+			try:
+				from api.products.models import CreditProduct
+				product = CreditProduct.objects.only('id', 'rule_set_id').get(id=loan_application.product_id)
+				
+				if product.rule_set_id:
+					logger.info(
+						f"[KYC] Usando rule_set del producto para solicitud {loan_application.id}"
+					)
+					# Crear snapshot si no existe
+					loan_application.rule_set_snapshot_id = product.rule_set_id
+					loan_application.save(update_fields=['rule_set_snapshot'])
+				else:
+					logger.warning(
+						f"[KYC] Producto {loan_application.product_id} no tiene rule_set configurado. "
+						f"No se puede determinar siguiente etapa."
+					)
+					return None
+			except Exception as e:
+				logger.error(f"[KYC] Error obteniendo rule_set del producto: {e}")
+				return None
 		
 		try:
-			# Buscar la etapa SUBMITTED en el workflow del producto
-			submitted_stage = loan_application.rule_set_snapshot.workflow_stages.filter(
-				stage_code='SUBMITTED'
-			).first()
+			# Obtener el rule_set
+			from api.loans.models_rules import TenantRuleSet
+			rule_set_id = loan_application.rule_set_snapshot_id
+			rule_set = TenantRuleSet.objects.get(id=rule_set_id)
 			
-			if submitted_stage and submitted_stage.next_stage_on_success:
-				return submitted_stage.next_stage_on_success
+			# Estrategia 1: Buscar etapa específica en el workflow
+			stage = rule_set.workflow_stages.filter(stage_code=from_status).first()
 			
-			# Si no hay configuración específica, usar IN_REVIEW por defecto
-			return 'IN_REVIEW'
+			if stage and stage.next_stage_on_success:
+				logger.info(
+					f"[KYC] Siguiente etapa desde {from_status} para solicitud {loan_application.id}: "
+					f"{stage.next_stage_on_success}"
+				)
+				return stage.next_stage_on_success
+			
+			# Estrategia 2: Buscar la siguiente etapa en orden
+			if stage:
+				all_stages = rule_set.workflow_stages.order_by('stage_order')
+				next_stage = all_stages.filter(stage_order__gt=stage.stage_order).first()
+				
+				if next_stage:
+					logger.info(
+						f"[KYC] Siguiente etapa por orden desde {from_status} para solicitud {loan_application.id}: "
+						f"{next_stage.stage_code}"
+					)
+					return next_stage.stage_code
+			
+			logger.warning(
+				f"[KYC] No se pudo determinar siguiente etapa desde {from_status} "
+				f"para solicitud {loan_application.id}"
+			)
+			return None
+			
 		except Exception as e:
-			import logging
-			logger = logging.getLogger(__name__)
-			logger.warning(f'Error obteniendo siguiente etapa del workflow: {e}')
-			return 'IN_REVIEW'
+			logger.error(
+				f"[KYC] Error obteniendo siguiente etapa del workflow: {type(e).__name__}: {str(e)}",
+				exc_info=True
+			)
+			return None
+	
+	def _create_identity_verified_timeline_event(self):
+		"""
+		Crea un evento en timeline cuando se verifica identidad pero no se transiciona.
+		
+		FASE 2 - Backend Robusto:
+		Este método se llama cuando:
+		- La solicitud no está en estado SUBMITTED
+		- No se pudo determinar la siguiente etapa
+		- Falló la transición automática
+		
+		Garantiza que el usuario vea en su timeline que su identidad fue verificada,
+		incluso si el estado principal no cambió.
+		"""
+		import logging
+		logger = logging.getLogger(__name__)
+		
+		try:
+			from api.loans.models import LoanApplicationStatusHistory
+			
+			LoanApplicationStatusHistory.objects.create(
+				institution=self.credit_application.institution,
+				application=self.credit_application,
+				previous_status=self.credit_application.status,
+				new_status=self.credit_application.status,
+				title='Identidad verificada',
+				description=f'La identidad del cliente fue verificada exitosamente con {self.provider}',
+				actor=self.user,
+				is_visible_to_borrower=True,
+				client_message='Tu identidad ha sido verificada exitosamente.'
+			)
+			
+			logger.info(
+				f"[KYC] Evento de timeline creado para solicitud {self.credit_application.id} "
+				f"(sin transición de estado)"
+			)
+			
+		except Exception as e:
+			logger.error(
+				f"[KYC] Error creando evento de timeline para solicitud {self.credit_application.id}: "
+				f"{type(e).__name__}: {str(e)}",
+				exc_info=True
+			)
 	
 	def mark_declined(self, reason: str = '') -> None:
 		"""Marca la verificación como rechazada"""

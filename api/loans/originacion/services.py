@@ -131,6 +131,16 @@ class CreditApplicationService:
         if client.institution_id != institution.id:
             raise CreditApplicationValidationError("El cliente no pertenece a esta institución")
         
+        # Obtener el producto para asignar el rule_set_snapshot
+        from api.products.models import CreditProduct
+        try:
+            product = CreditProduct.objects.only('id', 'rule_set_id').get(
+                id=data.get('product_id'),
+                institution=institution
+            )
+        except CreditProduct.DoesNotExist:
+            raise CreditApplicationValidationError("El producto crediticio no existe")
+        
         # Crear la solicitud
         application = LoanApplication(
             institution=institution,
@@ -149,7 +159,31 @@ class CreditApplicationService:
             updated_by=user,
         )
         
+        # Asignar rule_set_snapshot desde el producto
+        if product.rule_set_id:
+            application.rule_set_snapshot_id = product.rule_set_id
+        
         application.save()
+        
+        # Crear checklist de documentos requeridos
+        from api.loans.services.document_service import DocumentService
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            logger.info(
+                f"[CREATE_DRAFT] Iniciando creación de checklist para solicitud {application.id}"
+            )
+            checklist = DocumentService.create_document_checklist(application)
+            logger.info(
+                f"[CREATE_DRAFT] Checklist creado exitosamente con {len(checklist)} documentos"
+            )
+        except Exception as e:
+            # Log el error pero no fallar la creación de la solicitud
+            logger.error(
+                f"[CREATE_DRAFT] Error creando checklist de documentos para solicitud {application.id}: {e}",
+                exc_info=True
+            )
         
         # Registrar auditoría
         AuditLog.objects.create(
@@ -507,30 +541,44 @@ class CreditApplicationService:
                 "El producto crediticio no está activo"
             )
         
+        # Obtener parámetros del producto desde rule_set
+        if not product.rule_set:
+            # Si no hay rule_set, no validar parámetros
+            return
+        
+        try:
+            params = product.rule_set.product_parameters.first()
+            if not params:
+                # Si no hay parámetros configurados, no validar
+                return
+        except Exception:
+            # Si hay error obteniendo parámetros, no validar
+            return
+        
         # Validar monto
-        if product.min_amount and application.requested_amount < product.min_amount:
+        if params.min_amount and application.requested_amount < params.min_amount:
             raise CreditApplicationValidationError(
                 f"El monto solicitado (${application.requested_amount}) "
-                f"es menor al mínimo permitido (${product.min_amount})"
+                f"es menor al mínimo permitido (${params.min_amount})"
             )
         
-        if product.max_amount and application.requested_amount > product.max_amount:
+        if params.max_amount and application.requested_amount > params.max_amount:
             raise CreditApplicationValidationError(
                 f"El monto solicitado (${application.requested_amount}) "
-                f"excede el máximo permitido (${product.max_amount})"
+                f"excede el máximo permitido (${params.max_amount})"
             )
         
         # Validar plazo
-        if product.min_term_months and application.term_months < product.min_term_months:
+        if params.min_term_months and application.term_months < params.min_term_months:
             raise CreditApplicationValidationError(
                 f"El plazo solicitado ({application.term_months} meses) "
-                f"es menor al mínimo permitido ({product.min_term_months} meses)"
+                f"es menor al mínimo permitido ({params.min_term_months} meses)"
             )
         
-        if product.max_term_months and application.term_months > product.max_term_months:
+        if params.max_term_months and application.term_months > params.max_term_months:
             raise CreditApplicationValidationError(
                 f"El plazo solicitado ({application.term_months} meses) "
-                f"excede el máximo permitido ({product.max_term_months} meses)"
+                f"excede el máximo permitido ({params.max_term_months} meses)"
             )
     
     @staticmethod
@@ -547,10 +595,11 @@ class CreditApplicationService:
             CreditApplicationValidationError: Si la identidad fue rechazada
         """
         try:
-            # Obtener la verificación más reciente
+            # Obtener la verificación asociada a esta solicitud específica
             verification = IdentityVerification.objects.filter(
                 user=application.client.user,
-                institution=application.institution
+                institution=application.institution,
+                credit_application=application  # ⬅️ FILTRAR POR SOLICITUD ACTUAL
             ).latest('created_at')
             
             if verification.status == IdentityVerification.Status.APPROVED:
@@ -567,9 +616,9 @@ class CreditApplicationService:
             else:
                 return LoanApplication.IdentityVerificationStatus.MANUAL_REVIEW
         except IdentityVerification.DoesNotExist:
-            # No hay verificación, permitir envío con estado PENDING
+            # No hay verificación para esta solicitud, retornar NOT_VERIFIED
             # La verificación se hará después del envío
-            return LoanApplication.IdentityVerificationStatus.PENDING
+            return LoanApplication.IdentityVerificationStatus.NOT_VERIFIED
     
     @staticmethod
     def _create_timeline_event(

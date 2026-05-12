@@ -40,13 +40,22 @@ class DocumentService:
         Returns:
             list: Lista de LoanApplicationDocumentRequirement creados
         """
-        if not loan_application.rule_set_snapshot:
-            raise ValueError("La solicitud no tiene un rule_set_snapshot asignado")
+        import logging
+        logger = logging.getLogger(__name__)
         
-        # Obtener requisitos del producto
-        requirements = loan_application.rule_set_snapshot.document_requirements.filter(
-            product=loan_application.product
-        ).order_by('display_order')
+        # Obtener requisitos del producto directamente
+        from api.products.models import ProductDocumentRequirement
+        
+        requirements = ProductDocumentRequirement.objects.filter(
+            product=loan_application.product,
+            institution=loan_application.institution
+        ).select_related('document_type').order_by('display_order')
+        
+        logger.info(
+            f"[DOCUMENT_CHECKLIST] Creando checklist para solicitud {loan_application.id} "
+            f"(Producto: {loan_application.product.name}, ID: {loan_application.product_id}). "
+            f"Documentos configurados: {requirements.count()}"
+        )
         
         checklist = []
         
@@ -58,7 +67,12 @@ class DocumentService:
                 status=LoanApplicationDocumentRequirement.Status.PENDING
             )
             checklist.append(doc_req)
-
+            logger.info(
+                f"[DOCUMENT_CHECKLIST] Creado documento requerido: {req.document_type.name} "
+                f"(Obligatorio: {req.is_mandatory})"
+            )
+        
+        logger.info(f"[DOCUMENT_CHECKLIST] Checklist creado con {len(checklist)} documentos")
         
         return checklist
     
@@ -154,6 +168,9 @@ class DocumentService:
             'file_resource', 'status', 'uploaded_at', 'uploaded_by', 'notes'
         ])
         
+        # Actualizar estado de documentos de la solicitud
+        doc_req.loan_application.update_documents_status()
+        
         # Crear evento en timeline
         doc_req.loan_application.add_timeline_event(
             to_status=doc_req.loan_application.status,  # Mantener estado
@@ -165,14 +182,14 @@ class DocumentService:
         )
 
         
-        # Si todos los documentos obligatorios están cargados, cambiar estado
-        if doc_req.loan_application.check_documents_complete():
+        # Si todos los documentos obligatorios están aprobados, notificar
+        if doc_req.loan_application.documents_status == 'COMPLETE':
             doc_req.loan_application.add_timeline_event(
-                to_status='KYC',  # Siguiente etapa
+                to_status=doc_req.loan_application.status,  # Mantener estado
                 changed_by=uploaded_by,
-                notes="Todos los documentos obligatorios cargados",
+                notes="Todos los documentos obligatorios completados",
                 is_visible_to_client=True,
-                client_message="Documentación completa. Tu solicitud está en proceso de verificación.",
+                client_message="¡Documentación completa! Tu solicitud está lista para continuar.",
                 send_notification=True
             )
         
@@ -318,6 +335,9 @@ class DocumentService:
         doc_req.save(update_fields=[
             'status', 'reviewed_at', 'reviewed_by', 'rejection_reason'
         ])
+        
+        # Actualizar estado de documentos de la solicitud
+        doc_req.loan_application.update_documents_status()
         
         # Crear evento en timeline
         doc_req.loan_application.add_timeline_event(
