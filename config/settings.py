@@ -238,6 +238,7 @@ SIMPLE_JWT = {
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
     'SLIDING_WINDOW_RESTRICTION_ID_FIELD': 'id',
+    'TOKEN_TYPE_CLAIM': 'token_type',
 }
 
 # REST Framework Configuration
