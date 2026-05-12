@@ -121,11 +121,18 @@ class CanViewTimeline(BasePermission):
                 return obj.institution == request.tenant
             return True
         
-        # Si es cliente, solo sus propias solicitudes
-        if hasattr(request.user, 'client'):
-            return obj.client == request.user.client
+        # Obtener el cliente del usuario (puede ser client o client_profile)
+        client = None
+        if hasattr(request.user, 'client_profile'):
+            client = request.user.client_profile
+        elif hasattr(request.user, 'client'):
+            client = request.user.client
         
-        return False
+        if not client:
+            return False
+        
+        # Verificar que el cliente sea el dueño de la solicitud
+        return obj.client == client
 
 
 class CanManageApplications(BasePermission):
@@ -199,11 +206,18 @@ class IsApplicationOwner(BasePermission):
                 return obj.institution == request.tenant
             return True
         
-        # Si es el cliente dueño de la solicitud
-        if hasattr(request.user, 'client'):
-            return obj.client == request.user.client
+        # Obtener el cliente del usuario (puede ser client o client_profile)
+        client = None
+        if hasattr(request.user, 'client_profile'):
+            client = request.user.client_profile
+        elif hasattr(request.user, 'client'):
+            client = request.user.client
         
-        return False
+        if not client:
+            return False
+        
+        # Verificar que el cliente sea el dueño de la solicitud
+        return obj.client == client
 
 
 class IsDocumentOwner(BasePermission):
@@ -232,14 +246,37 @@ class IsDocumentOwner(BasePermission):
         Args:
             obj: LoanApplicationDocumentRequirement instance
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # Si es staff con permiso de revisar documentos
         if request.user.has_perm('loans.review_loan_documents'):
             if hasattr(obj, 'institution'):
                 return obj.institution == request.tenant
             return True
         
-        # Si es el cliente dueño de la solicitud
-        if hasattr(request.user, 'client'):
-            return obj.loan_application.client == request.user.client
+        # Obtener el cliente del usuario (puede ser client o client_profile)
+        client = None
+        if hasattr(request.user, 'client_profile'):
+            client = request.user.client_profile
+        elif hasattr(request.user, 'client'):
+            client = request.user.client
         
-        return False
+        if not client:
+            logger.warning(
+                f"[PERMISSIONS] Usuario {request.user.id} no tiene cliente asociado "
+                f"para documento {obj.id}"
+            )
+            return False
+        
+        # Verificar que el cliente sea el dueño de la solicitud
+        is_owner = obj.loan_application.client == client
+        
+        if not is_owner:
+            logger.warning(
+                f"[PERMISSIONS] Usuario {request.user.id} (Cliente {client.id}) "
+                f"intentó acceder a documento de solicitud {obj.loan_application_id} "
+                f"(Cliente {obj.loan_application.client_id})"
+            )
+        
+        return is_owner
