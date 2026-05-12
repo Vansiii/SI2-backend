@@ -11,7 +11,6 @@ Maneja la lógica de negocio para:
 
 from django.db import transaction
 from django.utils import timezone
-import magic
 import os
 from api.loans.models import LoanApplication
 from api.loans.models_documents import (
@@ -245,15 +244,16 @@ class DocumentService:
         # Obtener formatos permitidos y convertir a MIME types
         allowed_formats = document_requirement.get_allowed_formats()
         logger.info(f"[VALIDATE] Formatos permitidos configurados: {allowed_formats}")
+        logger.info(f"[VALIDATE] Tipo de allowed_formats: {type(allowed_formats)}")
         
         allowed_mimes = []
         for fmt in allowed_formats:
-            fmt_upper = fmt.upper()
+            fmt_upper = str(fmt).upper()  # Asegurar que sea string
             if fmt_upper in format_to_mime:
                 allowed_mimes.extend(format_to_mime[fmt_upper])
         
         logger.info(f"[VALIDATE] MIME types permitidos: {allowed_mimes}")
-        logger.info(f"[VALIDATE] Archivo recibido - MIME: {file.content_type}, Nombre: {file.name}")
+        logger.info(f"[VALIDATE] Archivo recibido - MIME: {file.content_type}, Nombre: {file.name}, Tamaño: {file.size}")
         
         # 2. Validar MIME type
         if file.content_type not in allowed_mimes:
@@ -273,38 +273,7 @@ class DocumentService:
                 f"Extensión no permitida. Extensiones válidas: {', '.join(valid_extensions)}"
             )
         
-        # 4. Validar magic bytes (contenido real)
-        try:
-            file.seek(0)
-            file_content = file.read(2048)  # Leer primeros 2KB
-            file.seek(0)  # Resetear posición
-            
-            detected_mime = magic.from_buffer(file_content, mime=True)
-            logger.info(f"[VALIDATE] MIME detectado por magic: {detected_mime}")
-            
-            # Verificar que el MIME detectado sea compatible
-            if detected_mime not in allowed_mimes:
-                # Algunos MIME types pueden variar, hacer validación más flexible
-                mime_compatible = False
-                if detected_mime == 'application/pdf' and 'application/pdf' in allowed_mimes:
-                    mime_compatible = True
-                elif detected_mime in ['image/jpeg', 'image/jpg'] and 'image/jpeg' in allowed_mimes:
-                    mime_compatible = True
-                elif detected_mime == 'image/png' and 'image/png' in allowed_mimes:
-                    mime_compatible = True
-                
-                if not mime_compatible:
-                    logger.warning(
-                        f"[VALIDATE] MIME detectado ({detected_mime}) no coincide con permitidos ({allowed_mimes})"
-                    )
-                    raise ValueError(
-                        f"El contenido del archivo no coincide con el formato declarado. "
-                        f"Detectado: {detected_mime}"
-                    )
-        except Exception as e:
-            logger.error(f"[VALIDATE] Error al validar magic bytes: {str(e)}")
-            # Si falla la validación de magic bytes, continuar (puede ser un problema de la librería)
-            pass
+        logger.info(f"[VALIDATE] Validación exitosa para {file.name}")
     
     @staticmethod
     @transaction.atomic
