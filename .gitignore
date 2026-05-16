@@ -38,6 +38,9 @@ static/
 *~
 .DS_Store
 *.code-workspace
+.agents/
+.kiro/
+skills-lock.json
 
 # Testing
 .pytest_cache/
@@ -48,16 +51,6 @@ htmlcov/
 .nox/
 coverage.xml
 *.cover
-
-# Node.js
-node_modules/
-package-lock.json
-package.json
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.hypothesis/
-nosetests.xml
 
 # Jupyter Notebook
 .ipynb_checkpoints

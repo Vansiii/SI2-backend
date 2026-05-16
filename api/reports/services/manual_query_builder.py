@@ -10,7 +10,25 @@ Fecha: 2026-05-11
 
 from django.db.models import Q, Count, Sum, Avg, F
 from django.db.models.functions import TruncMonth, TruncDate
+from django.utils import timezone
 from datetime import datetime, timedelta
+
+
+def make_aware_datetime(date_str, end_of_day=False):
+    """
+    Convierte un string de fecha a datetime timezone-aware.
+    
+    Args:
+        date_str: String en formato 'YYYY-MM-DD'
+        end_of_day: Si True, añade 1 día para incluir todo el día
+    
+    Returns:
+        datetime timezone-aware
+    """
+    dt = datetime.strptime(date_str, '%Y-%m-%d')
+    if end_of_day:
+        dt = dt + timedelta(days=1)
+    return timezone.make_aware(dt, timezone.get_current_timezone())
 
 
 class ManualQueryBuilder:
@@ -100,8 +118,7 @@ class ManualQueryBuilder:
             queryset = queryset.filter(created_at__gte=filters['date_from'])
         
         if filters.get('date_to'):
-            date_to = datetime.strptime(filters['date_to'], '%Y-%m-%d')
-            date_to = date_to + timedelta(days=1)
+            date_to = make_aware_datetime(filters['date_to'], end_of_day=True)
             queryset = queryset.filter(created_at__lt=date_to)
         
         # Ordenar por fecha de creación descendente
@@ -184,8 +201,7 @@ class ManualQueryBuilder:
             queryset = queryset.filter(created_at__gte=filters['date_from'])
         
         if filters.get('date_to'):
-            date_to = datetime.strptime(filters['date_to'], '%Y-%m-%d')
-            date_to = date_to + timedelta(days=1)
+            date_to = make_aware_datetime(filters['date_to'], end_of_day=True)
             queryset = queryset.filter(created_at__lt=date_to)
         
         return queryset.order_by('display_order', 'name')
@@ -272,8 +288,7 @@ class ManualQueryBuilder:
             queryset = queryset.filter(created_at__gte=filters['date_from'])
         
         if filters.get('date_to'):
-            date_to = datetime.strptime(filters['date_to'], '%Y-%m-%d')
-            date_to = date_to + timedelta(days=1)
+            date_to = make_aware_datetime(filters['date_to'], end_of_day=True)
             queryset = queryset.filter(created_at__lt=date_to)
         
         # Filtros de fecha de envío
@@ -281,8 +296,7 @@ class ManualQueryBuilder:
             queryset = queryset.filter(submitted_at__gte=filters['submitted_from'])
         
         if filters.get('submitted_to'):
-            date_to = datetime.strptime(filters['submitted_to'], '%Y-%m-%d')
-            date_to = date_to + timedelta(days=1)
+            date_to = make_aware_datetime(filters['submitted_to'], end_of_day=True)
             queryset = queryset.filter(submitted_at__lt=date_to)
         
         # Filtros de monto
@@ -349,8 +363,7 @@ class ManualQueryBuilder:
             queryset = queryset.filter(timestamp__gte=filters['date_from'])
         
         if filters.get('date_to'):
-            date_to = datetime.strptime(filters['date_to'], '%Y-%m-%d')
-            date_to = date_to + timedelta(days=1)
+            date_to = make_aware_datetime(filters['date_to'], end_of_day=True)
             queryset = queryset.filter(timestamp__lt=date_to)
         
         if filters.get('ip_address'):
@@ -432,8 +445,7 @@ class ManualQueryBuilder:
             logger.info(f'After date_from filter: {queryset.count()} users')
         
         if filters.get('date_to'):
-            date_to = datetime.strptime(filters['date_to'], '%Y-%m-%d')
-            date_to = date_to + timedelta(days=1)
+            date_to = make_aware_datetime(filters['date_to'], end_of_day=True)
             queryset = queryset.filter(date_joined__lt=date_to)
             logger.info(f'After date_to filter: {queryset.count()} users')
         

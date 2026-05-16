@@ -7,7 +7,8 @@ Fecha: 2026-05-11
 
 from django.db.models import Count, Sum, Avg, Q
 from django.db.models.functions import TruncMonth, TruncDate
-from datetime import datetime, timedelta
+from django.utils import timezone
+from datetime import timedelta
 
 
 class ManualChartDataGenerator:
@@ -170,12 +171,27 @@ class ManualChartDataGenerator:
     
     def generate_applications_charts(self):
         """Genera datos de gráficos para solicitudes."""
-        # Por estado
+        # Mapeo de estados a nombres legibles
+        status_labels = {
+            'DRAFT': 'Borrador',
+            'SUBMITTED': 'Enviada',
+            'IN_REVIEW': 'En Revisión',
+            'APPROVED': 'Aprobada',
+            'REJECTED': 'Rechazada',
+            'DISBURSED': 'Desembolsada',
+            'CANCELLED': 'Cancelada'
+        }
+        
+        # Por estado - solo incluir estados con valores > 0
         statuses = ['DRAFT', 'SUBMITTED', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED']
-        by_status = [
-            {'name': status, 'value': self.queryset.filter(status=status).count()}
-            for status in statuses
-        ]
+        by_status = []
+        for status in statuses:
+            count = self.queryset.filter(status=status).count()
+            if count > 0:
+                by_status.append({
+                    'name': status_labels.get(status, status),
+                    'value': count
+                })
         
         # Por mes
         by_month = list(
@@ -303,7 +319,7 @@ class ManualChartDataGenerator:
         ]
         
         # Por día (últimos 30 días)
-        thirty_days_ago = datetime.now() - timedelta(days=30)
+        thirty_days_ago = timezone.now() - timedelta(days=30)
         by_day = list(
             self.queryset.filter(timestamp__gte=thirty_days_ago)
             .annotate(day=TruncDate('timestamp'))

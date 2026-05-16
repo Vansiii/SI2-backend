@@ -203,13 +203,15 @@ class ManualDataProcessor:
         )
         
         avg_days = 0
-        if processed_apps.exists():
+        processed_count = processed_apps.count()
+        if processed_count > 0:
+            apps_list = list(processed_apps.only('reviewed_at', 'submitted_at'))
             total_days = sum([
                 (app.reviewed_at - app.submitted_at).days
-                for app in processed_apps
+                for app in apps_list
                 if app.reviewed_at and app.submitted_at
             ])
-            avg_days = total_days / processed_apps.count() if processed_apps.count() > 0 else 0
+            avg_days = total_days / processed_count if processed_count > 0 else 0
         
         # Por producto
         by_product = list(
