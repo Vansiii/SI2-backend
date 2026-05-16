@@ -273,6 +273,39 @@ class WorkflowStageDefinitionSerializer(serializers.ModelSerializer):
 class DecisionThresholdSerializer(serializers.ModelSerializer):
     """Serializer para DecisionThreshold"""
     
+    # Definir explícitamente los campos para evitar el warning de min_value
+    min_score_auto_approval = serializers.IntegerField(
+        default=70,
+        min_value=0,
+        help_text='Score >= este valor → aprobación automática'
+    )
+    min_score_manual_review = serializers.IntegerField(
+        default=50,
+        min_value=0,
+        help_text='Score entre este valor y auto_approval → revisión manual'
+    )
+    max_score_auto_rejection = serializers.IntegerField(
+        default=49,
+        min_value=0,
+        help_text='Score <= este valor → rechazo automático'
+    )
+    max_amount_auto_approval = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        min_value=0,
+        help_text='Montos superiores requieren revisión manual'
+    )
+    requires_manager_approval_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        min_value=0,
+        help_text='Montos superiores requieren aprobación de gerente/comité'
+    )
+    
     class Meta:
         model = DecisionThreshold
         fields = [

@@ -691,7 +691,7 @@ class CreditProductListSerializer(serializers.ModelSerializer):
 class ProductCalculationRequestSerializer(serializers.Serializer):
     """Serializer para solicitud de cálculo de producto."""
     
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0.01)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
     term_months = serializers.IntegerField(min_value=1)
     interest_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
     commission_rate = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)

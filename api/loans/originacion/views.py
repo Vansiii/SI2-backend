@@ -80,6 +80,7 @@ class CreditApplicationViewSet(viewsets.ModelViewSet):
             membership = user.institution_memberships.filter(
                 is_active=True
             ).first()
+            
             if membership:
                 queryset = queryset.filter(institution=membership.institution)
                 
@@ -87,13 +88,15 @@ class CreditApplicationViewSet(viewsets.ModelViewSet):
                 branches = user.assigned_branches.filter(
                     institution=membership.institution
                 )
-                if branches.exists():
+                branches_count = branches.count()
+                
+                if branches_count > 0:
                     queryset = queryset.filter(
                         Q(branch__in=branches) | Q(assigned_to=user)
                     )
                 
                 return queryset
-        except:
+        except Exception:
             pass
         
         return queryset.none()
