@@ -109,7 +109,7 @@ class StorageService:
         else:
             return f"tenants/{tenant_id}/temp/{file_uuid}.{file_extension}"
     
-    def upload_to_storage(self, file_path: str, file_content: bytes, content_type: str = "image/png") -> dict:
+    def upload_to_storage(self, file_path: str, file_content: bytes, content_type: str = "image/png", bucket: Optional[str] = None) -> dict:
         """
         Subir archivo a Supabase Storage.
         
@@ -117,6 +117,7 @@ class StorageService:
             file_path: Ruta completa en storage
             file_content: Contenido del archivo en bytes
             content_type: Tipo MIME del archivo (default: image/png)
+            bucket: Bucket de Supabase (default: self.bucket)
         
         Returns:
             Respuesta de Supabase
@@ -125,7 +126,8 @@ class StorageService:
             StorageUploadException: Si falla la subida
         """
         try:
-            response = self.client.storage.from_(self.bucket).upload(
+            bucket_name = bucket or self.bucket
+            response = self.client.storage.from_(bucket_name).upload(
                 path=file_path,
                 file=file_content,
                 file_options={"content-type": content_type}

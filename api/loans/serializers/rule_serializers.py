@@ -237,6 +237,16 @@ class WorkflowStageDefinitionSerializer(serializers.ModelSerializer):
         read_only=True
     )
     
+    display_order = serializers.IntegerField(
+        source='stage_order',
+        read_only=True
+    )
+    
+    description = serializers.SerializerMethodField()
+    is_required = serializers.BooleanField(default=True, read_only=True)
+    icon = serializers.SerializerMethodField()
+    color = serializers.SerializerMethodField()
+    
     class Meta:
         model = WorkflowStageDefinition
         fields = [
@@ -245,6 +255,11 @@ class WorkflowStageDefinitionSerializer(serializers.ModelSerializer):
             'stage_name',
             'stage_code',
             'stage_order',
+            'display_order',
+            'description',
+            'is_required',
+            'icon',
+            'color',
             'responsible_role',
             'responsible_role_name',
             'time_limit_hours',
@@ -254,6 +269,37 @@ class WorkflowStageDefinitionSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_description(self, obj):
+        return f"{obj.stage_name} - Paso {obj.stage_order}"
+    
+    def get_icon(self, obj):
+        icons = {
+            'DRAFT': 'edit_document',
+            'SUBMITTED': 'send',
+            'KYC': 'verified_user',
+            'DOCUMENTS': 'folder',
+            'SCORING': 'analytics',
+            'REVIEW': 'rate_review',
+            'APPROVED': 'check_circle',
+            'REJECTED': 'cancel',
+            'DISBURSED': 'payments',
+        }
+        return icons.get(obj.stage_code, 'circle')
+    
+    def get_color(self, obj):
+        colors = {
+            'DRAFT': '#64748B',
+            'SUBMITTED': '#3B82F6',
+            'KYC': '#8B5CF6',
+            'DOCUMENTS': '#F59E0B',
+            'SCORING': '#10B981',
+            'REVIEW': '#6366F1',
+            'APPROVED': '#22C55E',
+            'REJECTED': '#EF4444',
+            'DISBURSED': '#14B8A6',
+        }
+        return colors.get(obj.stage_code, '#94A3B8')
     
     def validate_stage_code(self, value):
         """Valida que el código de etapa sea válido"""

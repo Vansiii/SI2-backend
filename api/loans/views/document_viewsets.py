@@ -102,10 +102,14 @@ class ClientDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         logger = logging.getLogger(__name__)
         
         doc_req = self.get_object()
+        app_id = doc_req.loan_application_id
         
         logger.info(
-            f"[UPLOAD] Usuario {request.user.id} intentando subir documento {doc_req.id} "
-            f"para solicitud {doc_req.loan_application_id} (estado: {doc_req.loan_application.status})"
+            f"[UPLOAD] ===== INICIO upload action ====="
+        )
+        logger.info(
+            f"[UPLOAD] Usuario {request.user.id} subiendo documento {doc_req.id} "
+            f"para solicitud {app_id} (estado: {doc_req.loan_application.status})"
         )
         
         if not request.FILES.get('file'):
@@ -128,6 +132,7 @@ class ClientDocumentViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
+            logger.info(f"[UPLOAD] Llamando DocumentService.upload_document para doc_req={doc_req.id}, app={app_id}")
             updated_doc = DocumentService.upload_document(
                 document_requirement_id=doc_req.id,
                 file=serializer.validated_data['file'],
@@ -135,8 +140,9 @@ class ClientDocumentViewSet(viewsets.ReadOnlyModelViewSet):
                 notes=request.data.get('notes', '')
             )
             
-            logger.info(f"[UPLOAD] Documento {doc_req.id} subido exitosamente")
+            logger.info(f"[UPLOAD] Documento {doc_req.id} subido exitosamente para app={app_id}")
             result_serializer = self.get_serializer(updated_doc)
+            logger.info(f"[UPLOAD] ===== FIN upload action (OK) =====")
             return Response(result_serializer.data)
         
         except ValueError as e:
@@ -179,6 +185,11 @@ class StaffDocumentViewSet(viewsets.ReadOnlyModelViewSet):
             'loan_application__client'
         )
 
+        
+        # Filtrar por solicitud específica
+        loan_app_id = self.request.query_params.get('loan_application')
+        if loan_app_id:
+            queryset = queryset.filter(loan_application_id=loan_app_id)
         
         # Filtrar por estado
         status_filter = self.request.query_params.get('status')

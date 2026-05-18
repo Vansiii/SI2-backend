@@ -12,12 +12,15 @@ Maneja la lógica de negocio para:
 from django.db import transaction
 from django.utils import timezone
 import os
+import logging
 from api.loans.models import LoanApplication
 from api.loans.models_documents import (
     LoanApplicationDocumentRequirement,
     DocumentReviewHistory
 )
 from api.storage.models import FileResource
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentService:
@@ -112,8 +115,21 @@ class DocumentService:
             id=document_requirement_id
         )
         
+        app_id = doc_req.loan_application_id
+        logger.info(
+            f"[DOCUMENT_UPLOAD] ===== INICIO upload_document ====="
+        )
+        logger.info(
+            f"[DOCUMENT_UPLOAD] doc_req_id={document_requirement_id}, "
+            f"loan_application_id={app_id}, "
+            f"institution_id={doc_req.institution_id}, "
+            f"uploaded_by={uploaded_by.id if uploaded_by else 'system'}, "
+            f"document_type={doc_req.product_document_requirement.document_type.name if doc_req.product_document_requirement else 'unknown'}"
+        )
+        
         # Validar archivo
         DocumentService.validate_file(file, doc_req.product_document_requirement)
+        logger.info(f"[DOCUMENT_UPLOAD] Archivo validado OK: {file.name}")
 
         
         # Generar nombre único
@@ -131,10 +147,12 @@ class DocumentService:
             storage_service = StorageService()
         
         # Subir archivo
-        supabase_url = storage_service.upload_file(
-            file=file,
-            path=storage_path,
-            bucket='loan-documents'
+        file.seek(0)
+        file_content = file.read()
+        storage_service.upload_to_storage(
+            file_path=storage_path,
+            file_content=file_content,
+            content_type=file.content_type or 'application/octet-stream',
         )
         
         # Crear FileResource
@@ -146,7 +164,6 @@ class DocumentService:
             original_name=file.name,
             stored_name=unique_filename,
             file_path=storage_path,
-            bucket='loan-documents',
             mime_type=file.content_type,
             extension=ext.lstrip('.'),
             size=file.size,
@@ -171,6 +188,10 @@ class DocumentService:
         doc_req.loan_application.update_documents_status()
         
         # Crear evento en timeline
+        logger.info(
+            f"[DOCUMENT_UPLOAD] Creando timeline event para app_id={app_id}, "
+            f"status_actual={doc_req.loan_application.status}"
+        )
         doc_req.loan_application.add_timeline_event(
             to_status=doc_req.loan_application.status,  # Mantener estado
             changed_by=uploaded_by,
@@ -179,10 +200,19 @@ class DocumentService:
             client_message=f"Documento '{doc_req.product_document_requirement.document_type.name}' cargado exitosamente",
             send_notification=False
         )
+        logger.info(f"[DOCUMENT_UPLOAD] Timeline event creado para app_id={app_id}")
 
         
         # Si todos los documentos obligatorios están aprobados, notificar
-        if doc_req.loan_application.documents_status == 'COMPLETE':
+        docs_status = doc_req.loan_application.documents_status
+        logger.info(
+            f"[DOCUMENT_UPLOAD] documents_status={docs_status} para app_id={app_id}"
+        )
+        if docs_status == 'COMPLETE':
+            logger.info(
+                f"[DOCUMENT_UPLOAD] Documentos COMPLETOS para app_id={app_id}. "
+                f"Creando evento y verificando avance automatico."
+            )
             doc_req.loan_application.add_timeline_event(
                 to_status=doc_req.loan_application.status,  # Mantener estado
                 changed_by=uploaded_by,
@@ -191,6 +221,33 @@ class DocumentService:
                 client_message="¡Documentación completa! Tu solicitud está lista para continuar.",
                 send_notification=True
             )
+            # Disparar avance automatico del workflow
+            from api.loans.services.workflow_service import WorkflowService
+            try:
+                logger.info(
+                    f"[DOCUMENT_UPLOAD] Llamando check_and_advance_if_ready "
+                    f"para app_id={app_id}, trigger='documents_completed'"
+                )
+                WorkflowService.check_and_advance_if_ready(
+                    doc_req.loan_application,
+                    changed_by=uploaded_by,
+                    trigger='documents_completed'
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[DOCUMENT_UPLOAD] Error avanzando workflow: {e}",
+                    exc_info=True
+                )
+        else:
+            logger.info(
+                f"[DOCUMENT_UPLOAD] Documentos aun NO completos (status={docs_status}) "
+                f"para app_id={app_id}. No se verifica avance automatico."
+            )
+        
+        logger.info(
+            f"[DOCUMENT_UPLOAD] ===== FIN upload_document =====: "
+            f"doc_req_id={document_requirement_id}, app_id={app_id}"
+        )
         
         return doc_req
     
@@ -302,6 +359,18 @@ class DocumentService:
             id=document_requirement_id
         )
         
+        app_id = doc_req.loan_application_id
+        logger.info(
+            f"[DOCUMENT_REVIEW] ===== INICIO review_document ====="
+        )
+        logger.info(
+            f"[DOCUMENT_REVIEW] doc_req_id={document_requirement_id}, "
+            f"loan_application_id={app_id}, "
+            f"institution_id={doc_req.institution_id}, "
+            f"action={action}, "
+            f"reviewed_by={reviewed_by.id if reviewed_by else 'system'}"
+        )
+        
         # Validar que esté en estado válido para revisión
         valid_statuses = [
             LoanApplicationDocumentRequirement.Status.UPLOADED,
@@ -309,9 +378,15 @@ class DocumentService:
         ]
         
         if doc_req.status not in valid_statuses:
+            logger.error(
+                f"[DOCUMENT_REVIEW] Estado invalido para revision: "
+                f"doc_req_id={document_requirement_id}, status={doc_req.status}"
+            )
             raise ValueError(
                 f"El documento no puede ser revisado en el estado actual: {doc_req.status}"
             )
+        
+        logger.info(f"[DOCUMENT_REVIEW] Estado OK: {doc_req.status} para app_id={app_id}")
         
         # Crear historial de revisión
         DocumentReviewHistory.objects.create(
@@ -322,6 +397,7 @@ class DocumentService:
             comments=comments,
             file_resource_at_review=doc_req.file_resource
         )
+        logger.info(f"[DOCUMENT_REVIEW] Historial de revision creado para doc_req_id={document_requirement_id}")
         
         # Actualizar estado según la acción
         if action == 'APPROVED':
@@ -346,6 +422,10 @@ class DocumentService:
         doc_req.loan_application.update_documents_status()
         
         # Crear evento en timeline
+        logger.info(
+            f"[DOCUMENT_REVIEW] Creando timeline event para app_id={app_id}, "
+            f"status_actual={doc_req.loan_application.status}"
+        )
         doc_req.loan_application.add_timeline_event(
             to_status=doc_req.loan_application.status,
             changed_by=reviewed_by,
@@ -354,8 +434,41 @@ class DocumentService:
             client_message=client_message,
             requires_client_action=(action == 'REQUESTED_REUPLOAD'),
             action_description=comments if action == 'REQUESTED_REUPLOAD' else '',
-
             send_notification=True
+        )
+        logger.info(f"[DOCUMENT_REVIEW] Timeline event creado para app_id={app_id}")
+        
+        # Si los documentos quedaron completos, disparar avance automatico
+        docs_status = doc_req.loan_application.documents_status
+        logger.info(
+            f"[DOCUMENT_REVIEW] documents_status={docs_status} para app_id={app_id}"
+        )
+        if docs_status == 'COMPLETE':
+            logger.info(
+                f"[DOCUMENT_REVIEW] Documentos COMPLETOS. Verificando avance automatico "
+                f"para app_id={app_id}"
+            )
+            from api.loans.services.workflow_service import WorkflowService
+            try:
+                WorkflowService.check_and_advance_if_ready(
+                    doc_req.loan_application,
+                    changed_by=reviewed_by,
+                    trigger='documents_completed'
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[DOCUMENT_REVIEW] Error avanzando workflow: {e}",
+                    exc_info=True
+                )
+        else:
+            logger.info(
+                f"[DOCUMENT_REVIEW] Documentos aun NO completos (status={docs_status}) "
+                f"para app_id={app_id}"
+            )
+        
+        logger.info(
+            f"[DOCUMENT_REVIEW] ===== FIN review_document =====: "
+            f"doc_req_id={document_requirement_id}, app_id={app_id}"
         )
         
         return doc_req

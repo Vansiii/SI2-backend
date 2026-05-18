@@ -128,10 +128,17 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': dj_database_url.config(
         default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
-        conn_max_age=600,
+        conn_max_age=0,
         ssl_require=os.getenv('DB_SSL_REQUIRE', 'False').lower() == 'true',
     )
 }
+
+# Compatibilidad con connection poolers (PgBouncer de Supabase)
+# psycopg 3 usa server-side binding por defecto, incompatible con PgBouncer
+db_engine = DATABASES['default'].get('ENGINE', '')
+if 'postgresql' in db_engine or 'postgres' in db_engine:
+    opts = DATABASES['default'].setdefault('OPTIONS', {})
+    opts.setdefault('server_side_binding', False)
 
 
 # Password validation
