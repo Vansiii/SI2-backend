@@ -333,9 +333,26 @@ class LoanApplication(TenantModel):
         return f"{self.application_number} - {self.client.full_name} - ${self.requested_amount}"
     
     def save(self, *args, **kwargs):
-        # Generar número de solicitud si no existe
         if not self.application_number:
             self.application_number = self.generate_application_number()
+        uf = kwargs.get('update_fields')
+        if uf is None or 'status' in uf:
+            if self.pk:
+                try:
+                    old_status = LoanApplication.objects.filter(
+                        pk=self.pk
+                    ).values_list('status', flat=True).first()
+                    if old_status is not None and old_status != self.status:
+                        import logging
+                        model_logger = logging.getLogger(__name__)
+                        model_logger.info(
+                            f"[MODEL_SAVE] Status cambiado: app_id={self.pk}, "
+                            f"de={old_status} a={self.status}, "
+                            f"update_fields={uf}, "
+                            f"institution_id={self.institution_id}"
+                        )
+                except Exception:
+                    pass
         super().save(*args, **kwargs)
     
     def generate_application_number(self):
@@ -467,13 +484,21 @@ class LoanApplication(TenantModel):
         - COMPLETE: Si todos los documentos obligatorios están aprobados
         - OBSERVED: Si hay documentos rechazados
         """
+        import logging
+        logger = logging.getLogger(__name__)
         from api.loans.models_documents import LoanApplicationDocumentRequirement
+        
+        old_status = self.documents_status
         
         all_docs = self.document_checklist.all()
         
         if not all_docs.exists():
             self.documents_status = self.DocumentsStatus.NOT_REQUIRED
             self.save(update_fields=['documents_status'])
+            logger.info(
+                f"[DOC_STATUS] app_id={self.id}: actualizado a NOT_REQUIRED "
+                f"(desde {old_status})"
+            )
             return
         
         # Verificar si hay documentos rechazados
@@ -484,17 +509,29 @@ class LoanApplication(TenantModel):
         if rejected_count > 0:
             self.documents_status = self.DocumentsStatus.OBSERVED
             self.save(update_fields=['documents_status'])
+            logger.info(
+                f"[DOC_STATUS] app_id={self.id}: actualizado a OBSERVED "
+                f"(desde {old_status}, {rejected_count} rechazados)"
+            )
             return
         
         # Verificar si todos los obligatorios están aprobados
         if self.check_documents_complete():
             self.documents_status = self.DocumentsStatus.COMPLETE
             self.save(update_fields=['documents_status'])
+            logger.info(
+                f"[DOC_STATUS] app_id={self.id}: actualizado a COMPLETE "
+                f"(desde {old_status})"
+            )
             return
         
         # Por defecto, pendiente
         self.documents_status = self.DocumentsStatus.PENDING
         self.save(update_fields=['documents_status'])
+        logger.info(
+            f"[DOC_STATUS] app_id={self.id}: actualizado a PENDING "
+            f"(desde {old_status})"
+        )
     
     def get_pending_documents(self):
         """
@@ -586,10 +623,31 @@ class LoanApplication(TenantModel):
             send_notification: Si se debe enviar notificación
         """
         from django.utils import timezone
+        import logging
+        logger = logging.getLogger(__name__)
         
         previous_status = self.status
         self.status = to_status
         now = timezone.now()
+        
+        logger.info(
+            f"[TIMELINE] add_timeline_event llamada: "
+            f"application_id={self.id}, "
+            f"institution_id={self.institution_id}, "
+            f"from_status={previous_status}, "
+            f"to_status={to_status}, "
+            f"notes='{notes[:100]}', "
+            f"caller={changed_by.id if changed_by else 'system'}",
+            extra={'app_id': self.id, 'inst_id': self.institution_id}
+        )
+        
+        # Validacion defensiva: verificar que self.id sea un entero valido
+        if not isinstance(self.id, int) or self.id < 1:
+            logger.error(
+                f"[TIMELINE] CRITICO: application_id invalido: {self.id}. "
+                f"No se creara el evento."
+            )
+            raise ValueError(f"application_id invalido: {self.id}")
         
         # Actualizar fechas según el estado
         update_fields = ['status', 'updated_at']

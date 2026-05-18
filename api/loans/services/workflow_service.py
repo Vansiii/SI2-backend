@@ -93,13 +93,20 @@ class WorkflowService:
         from_status = application.status
         
         logger.info(
-            f"[WORKFLOW] Iniciando transición: Solicitud {loan_application_id} "
-            f"de {from_status} a {to_status}"
+            f"[WORKFLOW] ===== INICIO transition_state ====="
+        )
+        logger.info(
+            f"[WORKFLOW] Datos: app_id={loan_application_id}, "
+            f"institution_id={application.institution_id}, "
+            f"from_status={from_status}, to_status={to_status}, "
+            f"changed_by={changed_by.id if changed_by else 'system'}, "
+            f"rule_set_snapshot_id={application.rule_set_snapshot_id}"
         )
         
         # Validar transición
         try:
             WorkflowService.validate_transition(application, to_status)
+            logger.info(f"[WORKFLOW] Transicion validada OK: {from_status} -> {to_status}")
         except ValidationError as e:
             logger.error(
                 f"[WORKFLOW] Transición inválida para solicitud {loan_application_id}: {str(e)}"
@@ -109,6 +116,7 @@ class WorkflowService:
         # Ejecutar acciones pre-transición
         try:
             WorkflowService._execute_pre_transition_actions(application, to_status)
+            logger.info(f"[WORKFLOW] Acciones pre-transicion ejecutadas OK")
         except Exception as e:
             logger.error(
                 f"[WORKFLOW] Error en acciones pre-transición: {str(e)}",
@@ -118,6 +126,10 @@ class WorkflowService:
         
         # Obtener configuración de la etapa destino
         stage_config = WorkflowService._get_stage_config(application, to_status)
+        logger.info(
+            f"[WORKFLOW] Stage config para {to_status}: "
+            f"{'encontrada' if stage_config else 'NO encontrada'}"
+        )
         
         # Usar mensaje de la configuración si no se proporciona uno
         if not client_message and stage_config:
@@ -130,7 +142,7 @@ class WorkflowService:
         if stage_config and stage_config.requires_client_action:
             requires_client_action = True
             action_description = action_description or stage_config.client_action_description
-            action_url = action_url or stage_config.client_action_url
+            action_url = action_url or stage_config.client_action_url or ''
         
         # Crear evento en timeline
         try:
@@ -145,6 +157,10 @@ class WorkflowService:
                 action_url=action_url,
                 send_notification=send_notification
             )
+            logger.info(
+                f"[WORKFLOW] Timeline event creado correctamente. "
+                f"Nuevo application.status={application.status}"
+            )
         except Exception as e:
             logger.error(
                 f"[WORKFLOW] Error creando evento en timeline: {str(e)}",
@@ -155,6 +171,7 @@ class WorkflowService:
         # Ejecutar acciones post-transición
         try:
             WorkflowService._execute_post_transition_actions(application, to_status)
+            logger.info(f"[WORKFLOW] Acciones post-transicion ejecutadas OK")
         except Exception as e:
             logger.error(
                 f"[WORKFLOW] Error en acciones post-transición: {str(e)}",
@@ -164,11 +181,22 @@ class WorkflowService:
         
         # Verificar si puede avanzar automáticamente
         if stage_config and stage_config.auto_advance_enabled:
+            logger.info(
+                f"[WORKFLOW] Auto-advance habilitado para etapa {to_status}, "
+                f"programando verificación"
+            )
             WorkflowService._schedule_auto_advance_check(application)
+        else:
+            logger.info(
+                f"[WORKFLOW] Auto-advance NO habilitado para etapa {to_status}"
+            )
         
         logger.info(
-            f"[WORKFLOW] Transición completada: Solicitud {loan_application_id} "
-            f"ahora en estado {to_status}"
+            f"[WORKFLOW] ===== FIN transition_state EXITOSO =====: "
+            f"Solicitud {loan_application_id} "
+            f"ahora en estado {to_status}, "
+            f"status_from_db={application.status}, "
+            f"institution_id={application.institution_id}"
         )
         
         return application
@@ -250,7 +278,7 @@ class WorkflowService:
             return
         
         # Obtener todas las etapas del workflow ordenadas
-        workflow_stages = loan_application.rule_set_snapshot.workflow_stages.order_by('order')
+        workflow_stages = loan_application.rule_set_snapshot.workflow_stages.order_by('stage_order')
         
         # Encontrar la posición de la etapa destino
         target_stage = workflow_stages.filter(stage_code=to_status).first()
@@ -259,7 +287,7 @@ class WorkflowService:
             return
         
         # Obtener todas las etapas anteriores a la etapa destino
-        previous_stages = workflow_stages.filter(order__lt=target_stage.order)
+        previous_stages = workflow_stages.filter(stage_order__lt=target_stage.stage_order)
         
         # Validar que las etapas anteriores estén completadas
         for stage in previous_stages:
@@ -500,12 +528,38 @@ class WorkflowService:
         
         # Verificar condiciones de avance automático
         if stage_config.auto_advance_enabled:
-            if not stage_config.check_auto_advance_conditions(loan_application):
+            # SUBMITTED y DRAFT: el auto-avance procede sin condiciones porque
+            # son etapas iniciales (el usuario recién envió la solicitud y debe
+            # pasar a KYC para verificar su identidad)
+            bypass_conditions = stage_config.stage_code in ('SUBMITTED', 'DRAFT')
+            
+            if not bypass_conditions and not stage_config.check_auto_advance_conditions(loan_application):
+                conditions = stage_config.auto_advance_conditions or {}
+                # Log detallado de cada condición para diagnóstico
+                for key, expected in conditions.items():
+                    actual = None
+                    if key == 'documents_complete':
+                        actual = loan_application.documents_status
+                    elif key == 'kyc_approved':
+                        actual = loan_application.identity_verification_status
+                    elif key == 'score_calculated':
+                        actual = hasattr(loan_application, 'credit_score')
+                    logger.info(
+                        f"[AUTO_ADVANCE] Condición '{key}': "
+                        f"esperado={expected}, actual={actual}"
+                    )
                 logger.info(
                     f"Condiciones de avance automático no cumplidas para "
-                    f"solicitud {loan_application.id} en etapa {stage_config.stage_code}"
+                    f"solicitud {loan_application.id} en etapa {stage_config.stage_code}. "
+                    f"Condiciones configuradas: {conditions}"
                 )
                 return False
+            
+            if bypass_conditions:
+                logger.info(
+                    f"[AUTO_ADVANCE] Bypass de condiciones para etapa "
+                    f"{stage_config.stage_code} (etapa inicial)"
+                )
         
         # Determinar siguiente etapa
         next_stage = None
@@ -608,6 +662,159 @@ class WorkflowService:
                 f"Error en verificación de avance automático: {str(e)}"
             )
     
+    @staticmethod
+    @transaction.atomic
+    def check_and_advance_if_ready(application, changed_by=None, trigger=None):
+        """
+        Verifica si la solicitud puede avanzar automaticamente a la siguiente etapa
+        basandose en el workflow configurado y las condiciones cumplidas.
+
+        Utilizado por KYC, documentos y otros servicios que completan requisitos
+        de etapa. Solo avanza si la etapa actual tiene auto_advance_enabled=True,
+        no requiere aprobacion manual y cumple todas las condiciones configuradas.
+
+        Args:
+            application: LoanApplication instance
+            changed_by: Usuario que disparo el check (None = sistema)
+            trigger: Que disparo el check ('kyc_completed', 'documents_completed',
+                     'score_calculated')
+
+        Returns:
+            bool: True si se realizo una transicion automatica
+        """
+        from api.loans.models import LoanApplication
+        
+        original_id = application.id
+        logger.info(
+            f"[WORKFLOW] ===== INICIO check_and_advance_if_ready ====="
+        )
+        logger.info(
+            f"[WORKFLOW] Datos: app_id={original_id}, "
+            f"trigger={trigger}, "
+            f"changed_by={changed_by.id if changed_by else 'system'}"
+        )
+
+        # Refrescar desde DB con lock para evitar race conditions
+        try:
+            application = LoanApplication.objects.select_for_update().get(
+                id=original_id
+            )
+            logger.info(
+                f"[WORKFLOW] app refrescada: id={application.id}, "
+                f"status={application.status}, "
+                f"institution_id={application.institution_id}"
+            )
+        except LoanApplication.DoesNotExist:
+            logger.error(f"[WORKFLOW] Solicitud {original_id} no encontrada al refrescar")
+            return False
+
+        # No procesar estados finales
+        final_states = ['APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED']
+        if application.status in final_states:
+            logger.info(
+                f"[WORKFLOW] Solicitud {application.id} en estado final {application.status}. "
+                f"No se puede avanzar."
+            )
+            return False
+
+        # Sin rule_set_snapshot no hay workflow configurado
+        if not application.rule_set_snapshot:
+            logger.warning(
+                f"[WORKFLOW] Solicitud {application.id} sin rule_set_snapshot. "
+                f"No se puede verificar avance automatico."
+            )
+            return False
+
+        # Obtener la etapa actual del workflow
+        current_stage = application.rule_set_snapshot.workflow_stages.filter(
+            stage_code=application.status
+        ).first()
+
+        if not current_stage:
+            logger.info(
+                f"[WORKFLOW] Solicitud {application.id}: estado {application.status} "
+                f"no encontrado en workflow_stages. No se puede avanzar."
+            )
+            return False
+
+        logger.info(
+            f"[WORKFLOW] Etapa actual encontrada: "
+            f"stage_code={current_stage.stage_code}, "
+            f"stage_name={current_stage.stage_name}, "
+            f"auto_advance_enabled={current_stage.auto_advance_enabled}, "
+            f"requires_manual_approval={current_stage.requires_manual_approval}, "
+            f"next_stage_on_success={current_stage.next_stage_on_success}"
+        )
+
+        # Verificar que el avance automatico este habilitado
+        if not current_stage.auto_advance_enabled:
+            logger.info(
+                f"[WORKFLOW] Solicitud {application.id}: etapa {current_stage.stage_code} "
+                f"no tiene auto_advance_enabled."
+            )
+            return False
+
+        # Verificar si requiere aprobacion manual
+        if current_stage.requires_manual_approval:
+            logger.info(
+                f"[WORKFLOW] Solicitud {application.id}: etapa {current_stage.stage_code} "
+                f"requiere aprobacion manual. No se avanza automaticamente."
+            )
+            return False
+
+        # Verificar condiciones de avance automatico
+        if not current_stage.check_auto_advance_conditions(application):
+            logger.info(
+                f"[WORKFLOW] Solicitud {application.id}: condiciones de avance "
+                f"automatico no cumplidas para etapa {current_stage.stage_code}. "
+                f"Condiciones configuradas: {current_stage.auto_advance_conditions}"
+            )
+            return False
+
+        # Determinar el siguiente estado
+        next_stage = current_stage.next_stage_on_success
+        if not next_stage:
+            logger.warning(
+                f"[WORKFLOW] Solicitud {application.id}: etapa {current_stage.stage_code} "
+                f"no tiene next_stage_on_success configurado."
+            )
+            return False
+
+        # Realizar la transicion via el servicio de workflow
+        trigger_info = f" (trigger: {trigger})" if trigger else ""
+        logger.info(
+            f"[WORKFLOW] Condiciones cumplidas. Avanzando de {application.status} a {next_stage}"
+        )
+        try:
+            WorkflowService.transition_state(
+                loan_application_id=application.id,
+                to_status=next_stage,
+                changed_by=changed_by,
+                notes=f"Avance automatico desde {current_stage.stage_name}{trigger_info}",
+                send_notification=True
+            )
+
+            logger.info(
+                f"[WORKFLOW] Avance automatico exitoso: solicitud {application.id} "
+                f"de {current_stage.stage_code} a {next_stage}"
+            )
+            logger.info(
+                f"[WORKFLOW] ===== FIN check_and_advance_if_ready (exit) ====="
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"[WORKFLOW] Error en avance automatico para solicitud "
+                f"{application.id}: {str(e)}",
+                exc_info=True
+            )
+            logger.info(
+                f"[WORKFLOW] ===== FIN check_and_advance_if_ready (error) ====="
+            )
+            return False
+
     @staticmethod
     def process_escalations():
         """

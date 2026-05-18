@@ -547,7 +547,72 @@ class IdentityVerificationService:
 						'new_status': verification.status,
 					}
 				)
-				
+
+				# Actualizar LoanApplication.identity_verification_status y disparar avance automatico
+				kyc_app_id = verification.credit_application_id
+				logger.info(
+					f'[KYC_WEBHOOK] verification_id={verification.id}, '
+					f'credit_application_id={kyc_app_id}, '
+					f'verification_status={verification.status}'
+				)
+				if kyc_app_id:
+					from api.loans.models import LoanApplication
+					from api.loans.services.workflow_service import WorkflowService
+					try:
+						app = LoanApplication.objects.select_for_update().get(
+							id=kyc_app_id
+						)
+						logger.info(
+							f'[KYC_WEBHOOK] app encontrada: id={app.id}, '
+							f'status={app.status}, '
+							f'institution_id={app.institution_id}, '
+							f'identity_verification_status_anterior={app.identity_verification_status}'
+						)
+						# Mapear estado de verificacion a estado de solicitud
+						if verification.status == IdentityVerification.Status.APPROVED:
+							app.identity_verification_status = 'APPROVED'
+						elif verification.status == IdentityVerification.Status.DECLINED:
+							app.identity_verification_status = 'DECLINED'
+						elif verification.status == IdentityVerification.Status.ERROR:
+							app.identity_verification_status = 'MANUAL_REVIEW'
+						elif verification.status in [
+							IdentityVerification.Status.PENDING,
+							IdentityVerification.Status.IN_PROGRESS
+						]:
+							app.identity_verification_status = 'PENDING'
+						app.save(update_fields=['identity_verification_status'])
+						logger.info(
+							f'[KYC_WEBHOOK] identity_verification_status actualizado a '
+							f'{app.identity_verification_status} para app_id={kyc_app_id}'
+						)
+
+						# Disparar avance automatico del workflow solo si KYC fue aprobado
+						if verification.status == IdentityVerification.Status.APPROVED:
+							logger.info(
+								f'[KYC_WEBHOOK] KYC APROBADO. Llamando check_and_advance_if_ready '
+								f'para app_id={kyc_app_id}'
+							)
+							WorkflowService.check_and_advance_if_ready(
+								app,
+								changed_by=request_user,
+								trigger='kyc_completed'
+							)
+						else:
+							logger.info(
+								f'[KYC_WEBHOOK] KYC no aprobado (status={verification.status}). '
+								f'No se dispara avance automatico para app_id={kyc_app_id}'
+							)
+					except Exception as e:
+						logger.warning(
+							f'Error actualizando workflow de solicitud '
+							f'{kyc_app_id}: {e}',
+							exc_info=True
+						)
+				else:
+					logger.warning(
+						f'[KYC_WEBHOOK] verification_id={verification.id} no tiene credit_application asociada'
+					)
+
 				return True
 		
 		except Exception as e:

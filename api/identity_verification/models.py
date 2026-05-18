@@ -304,45 +304,37 @@ class IdentityVerification(TenantModel):
 				current_status
 			)
 			
-			# Si la siguiente etapa es KYC, obtener la siguiente etapa de KYC
+			# Si la siguiente etapa es KYC, transitamos a KYC primero y luego
+			# dejamos que el sistema avance automáticamente (check_and_advance_if_ready)
+			# en vez de saltar KYC e ir directo a DOCUMENTS.
 			if next_stage_from_current == 'KYC':
 				logger.info(
-					f"[KYC] La siguiente etapa desde {current_status} es KYC, "
-					f"pero KYC ya está completado. Buscando siguiente etapa de KYC..."
+					f"[KYC] La siguiente etapa desde {current_status} es KYC. "
+					f"Transicionando a KYC (luego el sistema avanzará automáticamente)."
 				)
 				
-				# Obtener la siguiente etapa después de KYC
-				next_stage_after_kyc = self._get_next_stage_from_status(
-					self.credit_application,
-					'KYC'
+				WorkflowService.transition_state(
+					loan_application_id=self.credit_application.id,
+					to_status='KYC',
+					changed_by=None,
+					notes='Transición automática después de completar verificación KYC',
+					client_message='Tu identidad ha sido verificada exitosamente.',
+					requires_client_action=False,
+					send_notification=True
 				)
 				
-				if next_stage_after_kyc:
-					logger.info(
-						f"[KYC] Transicionando directamente de {current_status} a {next_stage_after_kyc} "
-						f"(saltando KYC porque ya está completado)"
-					)
-					
-					WorkflowService.transition_state(
-						loan_application_id=self.credit_application.id,
-						to_status=next_stage_after_kyc,
-						changed_by=None,  # Sistema
-						notes=f'Transición automática después de completar verificación KYC',
-						client_message='Tu identidad ha sido verificada exitosamente. Continuamos con el siguiente paso.',
-						requires_client_action=True,
-						send_notification=True
-					)
-					
-					logger.info(
-						f"[KYC] Transición automática exitosa: solicitud {self.credit_application.id} "
-						f"ahora en estado {next_stage_after_kyc}"
-					)
-				else:
-					logger.warning(
-						f"[KYC] No se pudo determinar siguiente etapa después de KYC. "
-						f"Creando evento en timeline sin transición."
-					)
-					self._create_identity_verified_timeline_event()
+				# Ahora que estamos en KYC, intentar avanzar automáticamente
+				# a la siguiente etapa (DOCUMENTS) usando el mecanismo estándar
+				WorkflowService.check_and_advance_if_ready(
+					application=self.credit_application,
+					changed_by=None,
+					trigger='kyc_completed'
+				)
+				
+				logger.info(
+					f"[KYC] Transición a KYC completada para solicitud "
+					f"{self.credit_application.id}. Auto-advance solicitado."
+				)
 			
 			elif next_stage_from_current:
 				logger.info(

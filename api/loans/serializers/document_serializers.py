@@ -80,6 +80,24 @@ class LoanApplicationDocumentRequirementSerializer(serializers.ModelSerializer):
         read_only=True
     )
     
+    # Información de la solicitud (para staff)
+    loan_application_client_name = serializers.CharField(
+        source='loan_application.client_name',
+        read_only=True
+    )
+    loan_application_product_name = serializers.CharField(
+        source='loan_application.product_name',
+        read_only=True
+    )
+    loan_application_number = serializers.CharField(
+        source='loan_application.application_number',
+        read_only=True
+    )
+    loan_application_status = serializers.CharField(
+        source='loan_application.status',
+        read_only=True
+    )
+    
     # Historial de revisiones
     review_history = serializers.SerializerMethodField()
     
@@ -112,6 +130,11 @@ class LoanApplicationDocumentRequirementSerializer(serializers.ModelSerializer):
             'reviewed_by_name',
             'rejection_reason',
             'notes',
+            # Info de la solicitud (para staff)
+            'loan_application_client_name',
+            'loan_application_product_name', 
+            'loan_application_number',
+            'loan_application_status',
             # Historial
             'review_history',
             'created_at',

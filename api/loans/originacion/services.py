@@ -23,8 +23,10 @@ from ..models import (
 )
 from api.audit.models import AuditLog
 from api.identity_verification.models import IdentityVerification
+import logging
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class CreditApplicationValidationError(Exception):
@@ -141,6 +143,11 @@ class CreditApplicationService:
         except CreditProduct.DoesNotExist:
             raise CreditApplicationValidationError("El producto crediticio no existe")
         
+        logger.info(
+            f"[CREATE_DRAFT] Creando borrador para usuario {user.id}, "
+            f"institucion {institution.id}, producto {data.get('product_id')}"
+        )
+        
         # Crear la solicitud
         application = LoanApplication(
             institution=institution,
@@ -167,8 +174,6 @@ class CreditApplicationService:
         
         # Crear checklist de documentos requeridos
         from api.loans.services.document_service import DocumentService
-        import logging
-        logger = logging.getLogger(__name__)
         
         try:
             logger.info(
@@ -299,20 +304,38 @@ class CreditApplicationService:
         Raises:
             CreditApplicationValidationError: Si no se cumplen requisitos
         """
+        logger.info(
+            f"[SUBMIT] ===== INICIO submit_application ====="
+        )
+        logger.info(
+            f"[SUBMIT] Datos iniciales: app_id={application.id}, "
+            f"status_actual={application.status}, "
+            f"user_id={user.id}, "
+            f"institution_id={application.institution_id}"
+        )
+        
         # Validar estado actual
         if application.status != LoanApplication.Status.DRAFT:
+            logger.warning(
+                f"[SUBMIT] Estado invalido: app_id={application.id}, "
+                f"status_actual={application.status}, esperado=DRAFT"
+            )
             raise CreditApplicationValidationError(
                 f"Solo se pueden enviar solicitudes en borrador. "
                 f"Estado actual: {application.get_status_display()}"
             )
         
+        logger.info(f"[SUBMIT] Estado DRAFT validado correctamente para app_id={application.id}")
+        
         # Validar que el usuario sea el dueño o staff
         if application.client.user_id != user.id:
+            logger.info(f"[SUBMIT] Usuario {user.id} NO es el duenio de la solicitud. Verificando rol staff...")
             try:
                 if not user.user_roles.filter(
                     institution=application.institution,
                     is_active=True
                 ).exists():
+                    logger.warning(f"[SUBMIT] Usuario {user.id} no tiene permisos staff para app_id={application.id}")
                     raise CreditApplicationValidationError(
                         "No tiene permiso para enviar esta solicitud"
                     )
@@ -320,52 +343,88 @@ class CreditApplicationService:
                 raise CreditApplicationValidationError(
                     "No tiene permiso para enviar esta solicitud"
                 )
+        else:
+            logger.info(f"[SUBMIT] Usuario {user.id} es el duenio de la solicitud app_id={application.id}")
         
         # Validaciones de campos requeridos
+        logger.info(f"[SUBMIT] Validando campos requeridos para app_id={application.id}")
         CreditApplicationService._validate_required_fields(application)
+        logger.info(f"[SUBMIT] Campos requeridos OK para app_id={application.id}")
         
         # Validaciones de producto
+        logger.info(f"[SUBMIT] Validando reglas de producto para app_id={application.id}")
         CreditApplicationService._validate_product_rules(application)
+        logger.info(f"[SUBMIT] Reglas de producto OK para app_id={application.id}")
         
         # Validaciones de identidad (CU-13 integration)
         if check_identity:
+            logger.info(f"[SUBMIT] Verificando identidad para app_id={application.id}")
             identity_status = CreditApplicationService._validate_identity_verification(
                 application
             )
             application.identity_verification_status = identity_status
-        
-        # Cambiar estado
-        application.status = LoanApplication.Status.SUBMITTED
-        application.submitted_at = timezone.now()
-        application.updated_by = user
-        application.save()
-        
-        # Crear evento en timeline
-        CreditApplicationService._create_timeline_event(
-            application=application,
-            previous_status=LoanApplication.Status.DRAFT,
-            new_status=LoanApplication.Status.SUBMITTED,
-            actor=user,
-            title='Solicitud enviada',
-            description='El prestatario envió la solicitud de crédito para evaluación',
-            is_visible_to_borrower=True
+            application.updated_by = user
+            application.save(update_fields=['identity_verification_status', 'updated_at'])
+            logger.info(
+                f"[SUBMIT] Identidad verificada: app_id={application.id}, "
+                f"identity_status={identity_status}"
+            )
+
+        # Usar WorkflowService para la transicion DRAFT -> SUBMITTED
+        # No cambiar application.status manualmente; el workflow service
+        # valida la transicion segun el rule_set_snapshot y crea el timeline.
+        from api.loans.services.workflow_service import WorkflowService
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        logger.info(
+            f"[SUBMIT] Llamando WorkflowService.transition_state: "
+            f"app_id={application.id}, de={application.status} a=SUBMITTED"
         )
-        
-        # Registrar auditoría
+        try:
+            result = WorkflowService.transition_state(
+                loan_application_id=application.id,
+                to_status=LoanApplication.Status.SUBMITTED,
+                changed_by=user,
+                notes="Solicitud enviada por el prestatario para evaluacion",
+                client_message="Tu solicitud ha sido enviada para revision",
+                send_notification=True
+            )
+            logger.info(
+                f"[SUBMIT] transition_state retorno exitosamente. "
+                f"result.status={result.status}, result.id={result.id}"
+            )
+            application.refresh_from_db()
+            logger.info(
+                f"[SUBMIT] refresh_from_db completado. "
+                f"application.status={application.status}, "
+                f"application.id={application.id}"
+            )
+        except DjangoValidationError as e:
+            logger.error(
+                f"[SUBMIT] Error en transition_state: app_id={application.id}, "
+                f"error={str(e)}"
+            )
+            raise InvalidStatusTransitionError(str(e))
+
+        # Registrar auditoria
         AuditLog.objects.create(
             user=user,
             action='system_action',
             resource_type='LoanApplication',
             resource_id=application.id,
             institution=application.institution,
-            description=f'Solicitud de crédito enviada por {user.email}',
+            description=f'Solicitud de credito enviada por {user.email}',
             metadata={
                 'application_number': application.application_number,
                 'new_status': LoanApplication.Status.SUBMITTED,
                 'event': 'Application submitted for review'
             }
         )
-        
+
+        logger.info(
+            f"[SUBMIT] ===== FIN submit_application EXITOSO =====: "
+            f"app_id={application.id}, status={application.status}"
+        )
+
         return application
     
     @staticmethod
@@ -396,21 +455,61 @@ class CreditApplicationService:
             InvalidStatusTransitionError: Si la transición no es válida
             CreditApplicationValidationError: Si hay otros errores
         """
+        logger.info(
+            f"[CHANGE_STATUS] ===== INICIO change_status ====="
+        )
+        logger.info(
+            f"[CHANGE_STATUS] Datos: app_id={application.id}, "
+            f"institution_id={application.institution_id}, "
+            f"current_status={application.status}, new_status={new_status}, "
+            f"user_id={user.id}, reason='{reason[:100]}'"
+        )
+        
         if not CreditApplicationService._has_internal_role(user, application.institution):
+            logger.warning(
+                f"[CHANGE_STATUS] Usuario {user.id} sin permisos para "
+                f"app_id={application.id}"
+            )
             raise CreditApplicationValidationError(
                 'No tiene permisos para cambiar el estado de esta solicitud'
             )
 
-        # Validar transición
+        # Validar transicion usando el workflow configurado como fuente principal
         current_status = application.status
-        valid_next_statuses = CreditApplicationService.VALID_TRANSITIONS.get(
-            current_status, []
-        )
-        
-        if new_status not in valid_next_statuses:
-            raise InvalidStatusTransitionError(
-                f"Transición inválida de {current_status} a {new_status}. "
-                f"Transiciones permitidas: {valid_next_statuses}"
+        from api.loans.services.workflow_service import WorkflowService
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        if application.rule_set_snapshot:
+            try:
+                WorkflowService.validate_transition(application, new_status)
+                logger.info(
+                    f"[CHANGE_STATUS] Transicion validada via WorkflowService: "
+                    f"{current_status} -> {new_status}"
+                )
+            except DjangoValidationError as e:
+                logger.warning(
+                    f"[CHANGE_STATUS] Transicion invalida (WorkflowService): "
+                    f"{current_status} -> {new_status}: {str(e)}"
+                )
+                raise InvalidStatusTransitionError(str(e))
+        else:
+            # Fallback a transiciones por defecto solo si no hay rule_set_snapshot
+            valid_next_statuses = CreditApplicationService.VALID_TRANSITIONS.get(
+                current_status, []
+            )
+            if new_status not in valid_next_statuses:
+                logger.warning(
+                    f"[CHANGE_STATUS] Transicion invalida (fallback): "
+                    f"{current_status} -> {new_status}. "
+                    f"Permitidas: {valid_next_statuses}"
+                )
+                raise InvalidStatusTransitionError(
+                    f"Transicion invalida de {current_status} a {new_status}. "
+                    f"Transiciones permitidas: {valid_next_statuses}"
+                )
+            logger.info(
+                f"[CHANGE_STATUS] Transicion validada via fallback: "
+                f"{current_status} -> {new_status}"
             )
         
         # Guardar estado anterior
@@ -494,6 +593,12 @@ class CreditApplicationService:
                 'new_status': new_status,
                 'reason': reason,
             }
+        )
+        
+        logger.info(
+            f"[CHANGE_STATUS] ===== FIN change_status =====: "
+            f"app_id={application.id}, "
+            f"{previous_status} -> {new_status}"
         )
         
         return application
