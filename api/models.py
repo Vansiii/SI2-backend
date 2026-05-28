@@ -1,6 +1,24 @@
 from django.conf import settings
 from django.db import models
 
+# ============================================================
+# MODELOS DE GARANTIAS
+# ============================================================
+from api.garantias.models import (
+    Collateral,
+    Guarantor,
+    CollateralDocument,
+    CollateralValuation,
+)
+
+# ============================================================
+# MODELOS DE AUDITORÍA
+# ============================================================
+from api.audit.models import (
+    AuditLog,
+    SecurityEvent,
+)
+
 
 class TimeStampedModel(models.Model):
 	created_at = models.DateTimeField(auto_now_add=True)
@@ -58,8 +76,11 @@ class FinancialInstitutionMembership(TimeStampedModel):
 		on_delete=models.CASCADE,
 		related_name='institution_memberships',
 	)
-	role = models.CharField(max_length=20, choices=Role.choices, default=Role.ADMIN)
-	is_active = models.BooleanField(default=True)
+	role = models.CharField(
+		max_length=20,
+		choices=Role.choices,
+		default=Role.ANALYST,
+	)
 
 	class Meta:
 		db_table = 'financial_institution_memberships'
@@ -71,49 +92,46 @@ class FinancialInstitutionMembership(TimeStampedModel):
 		]
 		ordering = ['-created_at']
 
-	def __str__(self) -> str:
-		return f'{self.user} -> {self.institution} ({self.role})'
-
-
-# Parte erick sprint 0
-class Permission(TimeStampedModel):
-	code = models.CharField(max_length=80, unique=True)
-	name = models.CharField(max_length=120)
-	description = models.TextField(blank=True)
-	is_active = models.BooleanField(default=True)
-
-	class Meta:
-		db_table = 'permissions'
-		ordering = ['name']
-
-	def __str__(self) -> str:
-		return f'{self.code} - {self.name}'
-
-
-class Role(TimeStampedModel):
-	institution = models.ForeignKey(
-		FinancialInstitution,
-		on_delete=models.CASCADE,
-		related_name='roles',
-	)
-	name = models.CharField(max_length=100)
-	description = models.TextField(blank=True)
-	is_active = models.BooleanField(default=True)
-	permissions = models.ManyToManyField(
-		Permission,
-		blank=True,
-		related_name='roles',
-	)
-
-	class Meta:
-		db_table = 'roles'
-		ordering = ['name']
-		constraints = [
-			models.UniqueConstraint(
-				fields=['institution', 'name'],
-				name='uniq_role_name_per_institution',
-			)
-		]
-
-	def __str__(self) -> str:
-		return f'{self.name} ({self.institution.slug})'
+# ============================================================
+# EXPORTAR TODOS LOS MODELOS
+# ============================================================
+__all__ = [
+    # Core
+    'TimeStampedModel',
+    'TenantModel',
+    # Tenants
+    'FinancialInstitution',
+    'FinancialInstitutionMembership',
+    'TenantBranding',
+    # Authentication
+    'PasswordResetToken',
+    'LoginAttempt',
+    'AuthChallenge',
+    'EmailTwoFactorCode',
+    'TwoFactorAuth',
+    # Roles
+    'Permission',
+    'Role',
+    'UserRole',
+    # Users
+    'UserProfile',
+    # Audit
+    'AuditLog',
+    'SecurityEvent',
+    # Products
+    'CreditProduct',
+    'ProductRequirement',
+    # Garantias
+    'Collateral',
+    'Guarantor',
+    'CollateralDocument',
+    'CollateralValuation',
+    # Clients
+    'Client',
+    'ClientDocument',
+    # Branches
+    'Branch',
+    # SaaS
+    'SubscriptionPlan',
+    'Subscription',
+]

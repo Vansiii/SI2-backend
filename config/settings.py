@@ -48,6 +48,24 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'api',
+    # Módulos de la aplicación (nueva estructura modular)
+    'api.core',
+    'api.tenants',
+    'api.authentication',
+    'api.registration',
+    'api.roles',
+    'api.users',
+    'api.saas',
+    'api.audit',
+    'api.storage',  # Gestión de archivos en Supabase Storage
+    'api.backups',  # Sistema de backups por tenant
+    'api.clients',  # Gestión de clientes/prestatarios
+    'api.branches',  # Gestión de sucursales
+    'api.products',  # Gestión de productos crediticios
+    'api.loans',  # Gestión de solicitudes de crédito
+    'api.garantias',  # Gestión de garantias
+    'api.identity_verification',  # Verificación de identidad con Didit
+    'api.reports',  # Reportes personalizables con audio
 ]
 
 MIDDLEWARE = [
