@@ -100,3 +100,64 @@ class RolePermissionAssignmentSerializer(serializers.Serializer):
         permissions = self.validated_data['permission_ids']
         role.permissions.set(permissions)
         return role
+
+
+
+# ============================================================
+# SPRINT 8: Asignación de Permisos a Roles (Panel Tenant)
+# ============================================================
+
+class RolePermissionSerializer(serializers.Serializer):
+    """
+    Serializer para asignar permisos a un rol.
+    Versión simplificada para el endpoint de asignación.
+    """
+    
+    permission_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=True,
+        help_text="Lista de IDs de permisos a asignar al rol"
+    )
+    
+    def validate_permission_ids(self, value):
+        """Valida que los IDs de permisos existan y estén activos."""
+        if not value:
+            raise serializers.ValidationError("Debe proporcionar al menos un permiso")
+        
+        # Verificar que todos los permisos existan y estén activos
+        existing_permissions = Permission.objects.filter(
+            id__in=value,
+            is_active=True
+        )
+        existing_count = existing_permissions.count()
+        
+        if existing_count != len(value):
+            invalid_ids = set(value) - set(existing_permissions.values_list('id', flat=True))
+            raise serializers.ValidationError(
+                f"Los siguientes IDs de permisos no existen o están inactivos: {invalid_ids}"
+            )
+        
+        return value
+
+
+class AvailablePermissionSerializer(serializers.ModelSerializer):
+    """
+    Serializer para listar permisos disponibles para asignar.
+    Incluye información adicional útil para el frontend.
+    """
+    
+    is_assigned = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Permission
+        fields = ['id', 'code', 'name', 'description', 'is_active', 'is_assigned']
+    
+    def get_is_assigned(self, obj):
+        """
+        Indica si el permiso está asignado al rol actual.
+        Requiere que se pase el rol en el contexto.
+        """
+        role = self.context.get('role')
+        if role:
+            return obj.roles.filter(id=role.id).exists()
+        return False

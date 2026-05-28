@@ -21,6 +21,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 
 
+def env_bool(name: str, default: bool) -> bool:
+    """Read boolean-like values from environment variables."""
+    return os.getenv(name, str(default)).strip().lower() == 'true'
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
@@ -28,13 +33,21 @@ load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() == 'true'
+DEBUG = env_bool('DJANGO_DEBUG', True)
 
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.getenv('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost,testserver').split(',')
+    for host in os.getenv('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost,testserver,192.168.1.2,0.0.0.0').split(',')
     if host.strip()
 ]
+
+# Permitir todas las conexiones en desarrollo si está configurado
+if env_bool('DJANGO_ALLOW_ALL_HOSTS', False):
+    ALLOWED_HOSTS = ['*']
+
+# En producción, asegurar que Railway está en ALLOWED_HOSTS
+if not DEBUG and 'railway.app' not in str(ALLOWED_HOSTS):
+    ALLOWED_HOSTS.append('*.railway.app')
 
 
 # Application definition
@@ -43,10 +56,15 @@ INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
-    'django.contrib.sessions',
+    'django.contrib.sessions',  # Necesario para el admin de Django
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',  # CORS headers
     'rest_framework',
+    'django_filters',  # Filtering
+    'rest_framework_simplejwt.token_blacklist',
+    'drf_spectacular',  # API Documentation
+    # Aplicación principal
     'api',
     # Módulos de la aplicación (nueva estructura modular)
     'api.core',
@@ -70,13 +88,19 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # CORS - debe estar antes de CommonMiddleware
+    'django.contrib.sessions.middleware.SessionMiddleware',  # Necesario para el admin
     'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'api.middleware.TenantMiddleware',  # Tenant context injection - DESPUÉS de AuthenticationMiddleware
+    'api.middleware.RateLimitMiddleware',  # Rate limiting
+    'api.middleware.audit_middleware.AuditMiddleware',  # Auditoría automática de acciones
+    'api.middleware.audit_middleware.SecurityEventMiddleware',  # Eventos de seguridad
+    # 'api.middleware.debug_middleware.DebugRequestMiddleware',  # Debug middleware - DESHABILITADO temporalmente
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -84,7 +108,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'api' / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -105,10 +129,17 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': dj_database_url.config(
         default=f'sqlite:///{BASE_DIR / "db.sqlite3"}',
-        conn_max_age=600,
-        ssl_require=os.getenv('DB_SSL_REQUIRE', 'True').lower() == 'true',
+        conn_max_age=0,
+        ssl_require=os.getenv('DB_SSL_REQUIRE', 'False').lower() == 'true',
     )
 }
+
+# Compatibilidad con connection poolers (PgBouncer de Supabase)
+# psycopg 3 usa server-side binding por defecto, incompatible con PgBouncer
+db_engine = DATABASES['default'].get('ENGINE', '')
+if 'postgresql' in db_engine or 'postgres' in db_engine:
+    opts = DATABASES['default'].setdefault('OPTIONS', {})
+    opts.setdefault('server_side_binding', False)
 
 
 # Password validation
@@ -117,9 +148,16 @@ DATABASES = {
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        'OPTIONS': {
+            'user_attributes': ('username', 'email', 'first_name', 'last_name'),
+            'max_similarity': 0.7,
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,  # Mínimo 8 caracteres (recomendado: 12 para producción)
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -150,3 +188,284 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Default primary key field type
+# https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# Email Configuration (Brevo SMTP)
+# https://docs.djangoproject.com/en/6.0/topics/email/
+
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+
+EMAIL_HOST = os.getenv('BREVO_SMTP_HOST') or os.getenv('EMAIL_HOST', 'smtp-relay.brevo.com')
+EMAIL_PORT = int(os.getenv('BREVO_SMTP_PORT') or os.getenv('EMAIL_PORT', 587))
+EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
+EMAIL_USE_SSL = env_bool('EMAIL_USE_SSL', False)
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', 10))
+
+EMAIL_HOST_USER = os.getenv('BREVO_SMTP_USER') or os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY') or os.getenv('EMAIL_HOST_PASSWORD')
+
+# Delivery method: smtp | brevo_api | smtp_with_brevo_fallback
+EMAIL_DELIVERY_METHOD = os.getenv('EMAIL_DELIVERY_METHOD', 'smtp').strip().lower()
+BREVO_API_KEY = os.getenv('BREVO_API_KEY')
+BREVO_API_URL = os.getenv('BREVO_API_URL', 'https://api.brevo.com/v3/smtp/email')
+
+DEFAULT_FROM_EMAIL = (
+    os.getenv('DEFAULT_FROM_EMAIL')
+    or os.getenv('EMAIL_FROM')
+    or 'noreply@ejemplo.com'
+)
+DEFAULT_FROM_NAME = os.getenv('DEFAULT_FROM_NAME', 'Sistema Bancario')
+
+# Frontend URL used in links inside transactional emails.
+FRONTEND_URL = (os.getenv('FRONTEND_URL') or 'http://localhost:5173').rstrip('/')
+
+
+# JWT Configuration
+# https://django-rest-framework-simplejwt.readthedocs.io/
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('JWT_ACCESS_TOKEN_LIFETIME', 15))),
+    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('JWT_REFRESH_TOKEN_LIFETIME', 10080))),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': os.getenv('JWT_SECRET_KEY', SECRET_KEY),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'SLIDING_WINDOW_RESTRICTION_ID_FIELD': 'id',
+    'TOKEN_TYPE_CLAIM': 'token_type',
+}
+
+# REST Framework Configuration
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+# DRF Spectacular Configuration (API Documentation)
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Sistema de Gestión de Créditos API',
+    'DESCRIPTION': '''
+    API REST para sistema de gestión de créditos financieros multi-tenant.
+    
+    ## Características
+    - Arquitectura multi-tenant (SaaS)
+    - Autenticación JWT con 2FA
+    - Sistema de roles y permisos dinámicos
+    - Gestión de clientes/prestatarios
+    - Gestión de productos crediticios
+    - Flujo completo de originación de créditos
+    
+    ## Autenticación
+    La API utiliza JWT (JSON Web Tokens) para autenticación.
+    
+    1. Obtener token: `POST /api/login/`
+    2. Usar token en header: `Authorization: Bearer {token}`
+    3. Refrescar token: `POST /api/token/refresh/`
+    ''',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SCHEMA_PATH_PREFIX': '/api/',
+    'SERVERS': [
+        {'url': 'http://localhost:8000', 'description': 'Desarrollo'},
+        {'url': 'https://api.ejemplo.com', 'description': 'Producción'},
+    ],
+    'TAGS': [
+        {'name': 'Autenticación', 'description': 'Endpoints de autenticación y seguridad'},
+        {'name': 'Usuarios', 'description': 'Gestión de usuarios del sistema'},
+        {'name': 'Roles', 'description': 'Gestión de roles y permisos'},
+        {'name': 'Clientes', 'description': 'Gestión de clientes/prestatarios'},
+        {'name': 'Productos', 'description': 'Gestión de productos crediticios'},
+        {'name': 'SaaS', 'description': 'Administración de tenants y suscripciones'},
+    ],
+    'CONTACT': {
+        'name': 'Equipo de Desarrollo',
+        'email': 'dev@ejemplo.com',
+    },
+    'LICENSE': {
+        'name': 'Propietario',
+    },
+    # Configuración de seguridad
+    'SECURITY': [
+        {
+            'bearerAuth': {
+                'type': 'http',
+                'scheme': 'bearer',
+                'bearerFormat': 'JWT',
+            }
+        }
+    ],
+    # Configuración de UI
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,
+        'displayOperationId': True,
+        'filter': True,
+    },
+}
+
+
+# Cache Configuration (for Rate Limiting)
+# https://docs.djangoproject.com/en/6.0/topics/cache/
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
+
+# Rate Limiting Configuration
+RATELIMIT_ENABLE = not DEBUG  # Deshabilitar en desarrollo, habilitar en producción
+RATELIMIT_USE_CACHE = 'default'
+
+
+# Security Headers Configuration
+# https://docs.djangoproject.com/en/6.0/topics/security/
+
+# HTTPS/SSL - Deshabilitado en desarrollo para móvil
+SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', not DEBUG)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Cookies - Configuración relajada para desarrollo móvil
+SESSION_COOKIE_SECURE = env_bool('SESSION_COOKIE_SECURE', not DEBUG)
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+
+CSRF_COOKIE_SECURE = env_bool('CSRF_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# HSTS (HTTP Strict Transport Security)
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0  # 1 año en producción
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+
+# Content Security
+SECURE_CONTENT_TYPE_NOSNIFF = True  # Prevenir MIME sniffing
+SECURE_BROWSER_XSS_FILTER = True  # Activar filtro XSS del navegador
+X_FRAME_OPTIONS = 'DENY'  # Prevenir clickjacking
+
+
+# CORS Configuration
+# https://github.com/adamchainz/django-cors-headers
+
+# Permitir todos los orígenes en desarrollo si está configurado
+CORS_ALLOW_ALL_ORIGINS = env_bool('CORS_ALLOW_ALL_ORIGINS', False)
+
+# En desarrollo, permitir localhost y IPs locales
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://192.168.1.2:5173,http://192.168.1.2:3000'
+    ).split(',')
+    if origin.strip()
+] if not CORS_ALLOW_ALL_ORIGINS else []
+
+# Permitir credenciales (cookies, headers de autorización)
+CORS_ALLOW_CREDENTIALS = env_bool('CORS_ALLOW_CREDENTIALS', True)
+
+# Headers permitidos
+CORS_ALLOW_HEADERS = [
+    header.strip()
+    for header in os.getenv(
+        'CORS_ALLOW_HEADERS',
+        'accept,accept-encoding,authorization,content-type,dnt,origin,user-agent,x-csrftoken,x-requested-with,x-forwarded-for,x-real-ip'
+    ).split(',')
+    if header.strip()
+]
+
+# Métodos HTTP permitidos
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+
+# Supabase Storage Configuration
+# https://supabase.com/docs/guides/storage
+SUPABASE_URL = os.getenv('SUPABASE_URL', '')
+SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '')
+SUPABASE_BUCKET = os.getenv('SUPABASE_BUCKET', 'uploads')
+
+# Backup Configuration
+SUPABASE_BACKUP_BUCKET = os.getenv('SUPABASE_BACKUP_BUCKET', 'backups')
+BACKUP_SIGNED_URL_EXPIRATION = int(os.getenv('BACKUP_SIGNED_URL_EXPIRATION', 3600))  # 1 hora
+BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', 30))  # 30 días
+
+# File Upload Limits
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_IMAGE_SIZE = 5 * 1024 * 1024    # 5 MB
+MAX_FAVICON_SIZE = 1 * 1024 * 1024  # 1 MB
+MAX_COVER_SIZE = 10 * 1024 * 1024   # 10 MB
+MAX_DOCUMENT_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_AUDIO_SIZE = 20 * 1024 * 1024   # 20 MB
+
+
+# Logging Configuration
+# https://docs.djangoproject.com/en/6.0/topics/logging/
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'WARNING',  # Cambiado de DEBUG a WARNING
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'WARNING',  # Cambiado de DEBUG a WARNING para ocultar queries SQL
+            'propagate': False,
+        },
+        'api': {
+            'handlers': ['console'],
+            'level': 'INFO',  # Cambiado de DEBUG a INFO
+        },
+    },
+}

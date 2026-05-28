@@ -28,7 +28,7 @@ class RegisterUserAPIView(APIView):
                 'email': result.user.email,
                 'first_name': result.user.first_name,
                 'last_name': result.user.last_name,
-                'role': result.membership.role,
+                'role': 'Administrador de Institución',  # Rol fijo para registro
             },
         }
 

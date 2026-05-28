@@ -3,7 +3,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from api.models import FinancialInstitution
-from api.services.registration_service import RegisterUserInput, RegisterUserService
+from api.registration.services import RegisterUserInput, RegisterUserService
 
 
 class RegisterUserSerializer(serializers.Serializer):
@@ -14,6 +14,7 @@ class RegisterUserSerializer(serializers.Serializer):
     email = serializers.EmailField(max_length=254)
     password = serializers.CharField(write_only=True, min_length=8, trim_whitespace=False)
     confirm_password = serializers.CharField(write_only=True, min_length=8, trim_whitespace=False)
+    selected_plan_id = serializers.IntegerField(required=False, allow_null=True)
 
     def to_internal_value(self, data):
         normalized_data = dict(data)
@@ -23,6 +24,7 @@ class RegisterUserSerializer(serializers.Serializer):
             'firstName': 'first_name',
             'lastName': 'last_name',
             'confirmPassword': 'confirm_password',
+            'selectedPlanId': 'selected_plan_id',
         }
 
         for source_key, target_key in field_aliases.items():

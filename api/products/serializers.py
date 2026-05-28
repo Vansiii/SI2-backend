@@ -563,6 +563,21 @@ class UpdateCreditProductSerializer(serializers.ModelSerializer):
                                 "porque está asociado a solicitudes de crédito activas."
                             )
                         })
+            # Eliminar documentos existentes
+            instance.document_requirements_config.all().delete()
+            
+            # Crear nuevos documentos requeridos
+            for doc_req_data in document_requirements_data:
+                ProductDocumentRequirement.objects.create(
+                    product=instance,
+                    institution=instance.institution,
+                    document_type_id=doc_req_data.get('document_type'),
+                    is_mandatory=doc_req_data.get('is_mandatory', True),
+                    display_order=doc_req_data.get('display_order', 0),
+                    max_validity_days=doc_req_data.get('max_validity_days'),
+                    allowed_formats=doc_req_data.get('allowed_formats', []),
+                    max_file_size_mb=doc_req_data.get('max_file_size_mb'),
+                )
         
         return instance
 
