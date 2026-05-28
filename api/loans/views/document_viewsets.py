@@ -60,6 +60,12 @@ class ClientDocumentViewSet(viewsets.ReadOnlyModelViewSet):
             'loan_application'
         )
         
+        # Filtrar por solicitud específica si se pasa el query param
+        loan_app_id = self.request.query_params.get('loan_application')
+        if loan_app_id:
+            queryset = queryset.filter(loan_application_id=loan_app_id)
+            logger.info(
+                f"[DOCUMENTS] Solicitud {loan_app_id}: {queryset.count()} documentos encontrados "
         # Log para debugging
         loan_app_id = self.request.query_params.get('loan_application')
         if loan_app_id:

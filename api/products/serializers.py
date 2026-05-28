@@ -495,6 +495,8 @@ class UpdateCreditProductSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         """Actualiza el producto y sus documentos requeridos."""
+        from django.db.models import ProtectedError
+        
         document_requirements_data = validated_data.pop('document_requirements', None)
         eligibility_rules_ids = validated_data.pop('selected_eligibility_rules', None)
         
@@ -515,6 +517,52 @@ class UpdateCreditProductSerializer(serializers.ModelSerializer):
         
         # Actualizar documentos requeridos si se proporcionaron
         if document_requirements_data is not None:
+            # Obtener los existentes indexados por document_type_id
+            existing_requirements = {
+                req.document_type_id: req
+                for req in instance.document_requirements_config.all()
+            }
+            
+            incoming_doc_types = set()
+            for doc_req_data in document_requirements_data:
+                doc_type_id = doc_req_data.get('document_type')
+                if doc_type_id:
+                    incoming_doc_types.add(doc_type_id)
+                    
+                    # Si ya existe, actualizamos sus campos en vez de recrearlo
+                    if doc_type_id in existing_requirements:
+                        req = existing_requirements[doc_type_id]
+                        req.is_mandatory = doc_req_data.get('is_mandatory', True)
+                        req.display_order = doc_req_data.get('display_order', 0)
+                        req.max_validity_days = doc_req_data.get('max_validity_days')
+                        req.allowed_formats = doc_req_data.get('allowed_formats', [])
+                        req.max_file_size_mb = doc_req_data.get('max_file_size_mb')
+                        req.save()
+                    else:
+                        # Si no existe, lo creamos
+                        ProductDocumentRequirement.objects.create(
+                            product=instance,
+                            institution=instance.institution,
+                            document_type_id=doc_type_id,
+                            is_mandatory=doc_req_data.get('is_mandatory', True),
+                            display_order=doc_req_data.get('display_order', 0),
+                            max_validity_days=doc_req_data.get('max_validity_days'),
+                            allowed_formats=doc_req_data.get('allowed_formats', []),
+                            max_file_size_mb=doc_req_data.get('max_file_size_mb'),
+                        )
+            
+            # Eliminar los que ya no vienen en la lista
+            for doc_type_id, req in existing_requirements.items():
+                if doc_type_id not in incoming_doc_types:
+                    try:
+                        req.delete()
+                    except ProtectedError:
+                        raise serializers.ValidationError({
+                            'document_requirements': (
+                                f"No se puede eliminar el requisito de documento '{req.document_type.name}' "
+                                "porque está asociado a solicitudes de crédito activas."
+                            )
+                        })
             # Eliminar documentos existentes
             instance.document_requirements_config.all().delete()
             

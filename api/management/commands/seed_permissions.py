@@ -240,6 +240,59 @@ class Command(BaseCommand):
                 },
             ],
             
+            'Garantías y Garantes': [
+                {
+                    'code': 'collaterals.view',
+                    'name': 'Ver Garantías',
+                    'description': 'Permite ver la lista de garantías y sus detalles'
+                },
+                {
+                    'code': 'collaterals.create',
+                    'name': 'Crear Garantías',
+                    'description': 'Permite registrar nuevas garantías'
+                },
+                {
+                    'code': 'collaterals.edit',
+                    'name': 'Editar Garantías',
+                    'description': 'Permite modificar garantías existentes'
+                },
+                {
+                    'code': 'collaterals.delete',
+                    'name': 'Eliminar Garantías',
+                    'description': 'Permite eliminar o desactivar garantías'
+                },
+                {
+                    'code': 'collaterals.approve',
+                    'name': 'Aprobar Garantías',
+                    'description': 'Permite aprobar, rechazar o liberar garantías, y verificar documentos'
+                },
+                {
+                    'code': 'collaterals.manage_valuations',
+                    'name': 'Gestionar Valuaciones',
+                    'description': 'Permite registrar y aprobar valuaciones de garantías'
+                },
+                {
+                    'code': 'guarantors.view',
+                    'name': 'Ver Garantes',
+                    'description': 'Permite ver la lista de garantes y sus detalles'
+                },
+                {
+                    'code': 'guarantors.create',
+                    'name': 'Crear Garantes',
+                    'description': 'Permite registrar nuevos garantes'
+                },
+                {
+                    'code': 'guarantors.edit',
+                    'name': 'Editar Garantes',
+                    'description': 'Permite modificar o eliminar garantes existentes'
+                },
+                {
+                    'code': 'guarantors.approve',
+                    'name': 'Aprobar Garantes',
+                    'description': 'Permite aprobar o rechazar garantes'
+                },
+            ],
+            
             'Reportes': [
                 {
                     'code': 'reports.view',

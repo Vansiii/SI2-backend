@@ -28,6 +28,8 @@ urlpatterns = [
     path('products/', include('api.products.urls')),
     # Sprint 3: Gestión de solicitudes de crédito
     path('loans/', include('api.loans.urls')),
+    # Garantias y garantes
+    path('garantias/', include('api.garantias.urls')),
     # CU-13: Verificación de identidad con Didit
     path('identity-verifications/', include('api.identity_verification.urls')),
     # Auditoría y seguridad (solo SaaS admin)
