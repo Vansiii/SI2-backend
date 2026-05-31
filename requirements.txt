@@ -99,3 +99,6 @@ zstandard==0.25.0
 openpyxl==3.1.2
 matplotlib==3.8.0
 python-magic==0.4.27
+
+# Módulo de contratos - Generación de PDFs
+weasyprint>=60.1

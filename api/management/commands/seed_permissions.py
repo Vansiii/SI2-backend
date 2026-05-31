@@ -240,6 +240,59 @@ class Command(BaseCommand):
                 },
             ],
             
+            'Garantías y Garantes': [
+                {
+                    'code': 'collaterals.view',
+                    'name': 'Ver Garantías',
+                    'description': 'Permite ver la lista de garantías y sus detalles'
+                },
+                {
+                    'code': 'collaterals.create',
+                    'name': 'Crear Garantías',
+                    'description': 'Permite registrar nuevas garantías'
+                },
+                {
+                    'code': 'collaterals.edit',
+                    'name': 'Editar Garantías',
+                    'description': 'Permite modificar garantías existentes'
+                },
+                {
+                    'code': 'collaterals.delete',
+                    'name': 'Eliminar Garantías',
+                    'description': 'Permite eliminar o desactivar garantías'
+                },
+                {
+                    'code': 'collaterals.approve',
+                    'name': 'Aprobar Garantías',
+                    'description': 'Permite aprobar, rechazar o liberar garantías, y verificar documentos'
+                },
+                {
+                    'code': 'collaterals.manage_valuations',
+                    'name': 'Gestionar Valuaciones',
+                    'description': 'Permite registrar y aprobar valuaciones de garantías'
+                },
+                {
+                    'code': 'guarantors.view',
+                    'name': 'Ver Garantes',
+                    'description': 'Permite ver la lista de garantes y sus detalles'
+                },
+                {
+                    'code': 'guarantors.create',
+                    'name': 'Crear Garantes',
+                    'description': 'Permite registrar nuevos garantes'
+                },
+                {
+                    'code': 'guarantors.edit',
+                    'name': 'Editar Garantes',
+                    'description': 'Permite modificar o eliminar garantes existentes'
+                },
+                {
+                    'code': 'guarantors.approve',
+                    'name': 'Aprobar Garantes',
+                    'description': 'Permite aprobar o rechazar garantes'
+                },
+            ],
+            
             'Reportes': [
                 {
                     'code': 'reports.view',
@@ -304,6 +357,77 @@ class Command(BaseCommand):
                     'code': 'loans.review_loan_documents',
                     'name': 'Can review and approve loan documents',
                     'description': 'Permite revisar, aprobar y rechazar documentos de solicitudes de crédito'
+                },
+            ],
+            
+            'Contratos de Crédito': [
+                {
+                    'code': 'contracts.view',
+                    'name': 'Ver Contratos',
+                    'description': 'Permite ver contratos de crédito'
+                },
+                {
+                    'code': 'contracts.generate',
+                    'name': 'Generar Contratos',
+                    'description': 'Permite generar contratos desde solicitudes aprobadas'
+                },
+                {
+                    'code': 'contracts.publish',
+                    'name': 'Publicar Contratos',
+                    'description': 'Permite publicar contratos para firma'
+                },
+                {
+                    'code': 'contracts.sign',
+                    'name': 'Firmar Contratos',
+                    'description': 'Permite firmar contratos digitalmente'
+                },
+                {
+                    'code': 'contracts.cancel',
+                    'name': 'Cancelar Contratos',
+                    'description': 'Permite cancelar contratos'
+                },
+                {
+                    'code': 'contracts.download',
+                    'name': 'Descargar Contratos',
+                    'description': 'Permite descargar PDFs de contratos'
+                },
+                {
+                    'code': 'contracts.view_signatures',
+                    'name': 'Ver Firmas',
+                    'description': 'Permite ver estado y detalles de firmas'
+                },
+                {
+                    'code': 'contracts.view_amortization',
+                    'name': 'Ver Tabla de Amortización',
+                    'description': 'Permite ver tabla de amortización de contratos'
+                },
+            ],
+            
+            'Plantillas de Contratos': [
+                {
+                    'code': 'contract_templates.view',
+                    'name': 'Ver Plantillas',
+                    'description': 'Permite ver plantillas de contratos'
+                },
+                {
+                    'code': 'contract_templates.create',
+                    'name': 'Crear Plantillas',
+                    'description': 'Permite crear nuevas plantillas de contratos'
+                },
+                {
+                    'code': 'contract_templates.edit',
+                    'name': 'Editar Plantillas',
+                    'description': 'Permite editar plantillas de contratos existentes'
+                },
+                {
+                    'code': 'contract_templates.delete',
+                    'name': 'Eliminar Plantillas',
+                    'description': 'Permite eliminar plantillas de contratos'
+                },
+                {
+                    'code': 'contract_templates.preview',
+                    'name': 'Vista Previa de Plantillas',
+                    'description': 'Permite ver vista previa de plantillas'
                 },
             ],
             
