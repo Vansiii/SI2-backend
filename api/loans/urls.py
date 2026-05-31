@@ -43,6 +43,9 @@ from .views.stripe_webhook_views import StripeWebhookViewSet
 from .views.support_request_viewsets import SupportRequestViewSet
 # Stripe return pages (mobile)
 from .views.stripe_return_views import stripe_success, stripe_cancel
+from .views.rejection_viewsets import (
+    RejectionReasonViewSet,
+)
 
 app_name = 'loans'
 
@@ -73,6 +76,9 @@ router.register(r'workflow/metrics', WorkflowMetricsViewSet, basename='workflow-
 router.register(r'approvals/queue', ApprovalQueueViewSet, basename='approval-queue')
 router.register(r'approvals/decisions', ApprovalDecisionViewSet, basename='approval-decision')
 router.register(r'approvals/escalations', EscalationViewSet, basename='escalation')
+
+# SP3-99: Motivos de rechazo parametrizados
+router.register(r'rejection-reasons', RejectionReasonViewSet, basename='rejection-reason')
 
 # Catálogos Centralizados
 router.register(r'catalogs/document-types', DocumentTypeViewSet, basename='document-type')
