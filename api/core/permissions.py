@@ -95,6 +95,49 @@ class IsSaaSAdmin(BasePermission):
 		return request.user.profile.is_saas_admin()
 
 
+class IsStaffUser(BasePermission):
+	"""
+	Permission class que verifica si el usuario es staff (empleado de la institución).
+	
+	Permite acceso a:
+	- Usuarios con is_staff=True
+	- Usuarios con perfil de tipo TENANT_ADMIN o TENANT_USER
+	- Superadmin SaaS (siempre tiene acceso)
+	"""
+	
+	def has_permission(self, request, view):
+		"""
+		Verifica si el usuario es staff.
+		
+		Args:
+			request: HttpRequest con usuario autenticado
+			view: Vista que está siendo accedida
+		
+		Returns:
+			bool: True si es staff, False en caso contrario
+		"""
+		if not request.user.is_authenticated:
+			return False
+		
+		# Verificar si tiene perfil
+		if not hasattr(request.user, 'profile'):
+			return False
+		
+		# Superadmin SaaS tiene acceso
+		if request.user.profile.is_saas_admin():
+			return True
+		
+		# Verificar si es staff de Django
+		if request.user.is_staff:
+			return True
+		
+		# Verificar si es usuario de tenant (empleado de institución)
+		if hasattr(request.user.profile, 'user_type'):
+			return request.user.profile.user_type in ['TENANT_ADMIN', 'TENANT_USER']
+		
+		return False
+
+
 def require_permission(permission_code):
 	"""
 	Factory function para crear clases de permiso dinámicamente.

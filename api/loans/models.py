@@ -966,3 +966,10 @@ from api.loans.models_catalogs import (
     Currency,
     DocumentType,
 )
+
+# Importar modelos de aprobación y ejecución de workflows (CU-16)
+from api.loans.models_approval import (
+    WorkflowExecution,
+    WorkflowStageExecution,
+    ApprovalDecision,
+)

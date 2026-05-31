@@ -398,6 +398,31 @@ class CreditApplicationService:
                 f"application.status={application.status}, "
                 f"application.id={application.id}"
             )
+            
+            # CU-16: Iniciar workflow execution si no existe
+            try:
+                from api.loans.services.workflow_engine import WorkflowEngine
+                
+                if not hasattr(application, 'workflow_execution'):
+                    workflow_execution = WorkflowEngine.start_workflow(
+                        loan_application=application,
+                        started_by=user
+                    )
+                    logger.info(
+                        f"[SUBMIT] Workflow iniciado: workflow_id={workflow_execution.id}, "
+                        f"app_id={application.id}"
+                    )
+                else:
+                    logger.info(
+                        f"[SUBMIT] Workflow ya existe para app_id={application.id}"
+                    )
+            except Exception as e:
+                # No fallar el submit si hay error en workflow
+                logger.error(
+                    f"[SUBMIT] Error al iniciar workflow para app_id={application.id}: {str(e)}",
+                    exc_info=True
+                )
+            
         except DjangoValidationError as e:
             logger.error(
                 f"[SUBMIT] Error en transition_state: app_id={application.id}, "
