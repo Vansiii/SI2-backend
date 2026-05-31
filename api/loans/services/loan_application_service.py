@@ -136,6 +136,64 @@ class LoanApplicationService:
         return (total_debt / application.monthly_income) * 100
     
     @staticmethod
+    def validate_approved_terms(application, approved_amount, approved_term_months, approved_interest_rate):
+        """
+        Valida que los términos aprobados estén dentro de los límites del producto.
+        
+        Args:
+            application: LoanApplication
+            approved_amount: Decimal - Monto aprobado
+            approved_term_months: int - Plazo aprobado en meses
+            approved_interest_rate: Decimal - Tasa de interés aprobada
+        
+        Raises:
+            ValidationError: Si algún valor está fuera de rango
+        
+        Returns:
+            bool: True si todas las validaciones pasan
+        """
+        from rest_framework.exceptions import ValidationError
+        from decimal import Decimal
+        
+        product = application.product
+        errors = {}
+        
+        # Convertir a Decimal si es necesario
+        if approved_amount is not None:
+            approved_amount = Decimal(str(approved_amount))
+        if approved_interest_rate is not None:
+            approved_interest_rate = Decimal(str(approved_interest_rate))
+        
+        # Validar monto
+        if approved_amount is not None:
+            min_amount = Decimal(str(product.min_amount))
+            max_amount = Decimal(str(product.max_amount))
+            
+            if approved_amount < min_amount:
+                errors['approved_amount'] = f'El monto mínimo permitido es {min_amount}'
+            elif approved_amount > max_amount:
+                errors['approved_amount'] = f'El monto máximo permitido es {max_amount}'
+        
+        # Validar plazo
+        if approved_term_months is not None:
+            if approved_term_months < product.min_term_months:
+                errors['approved_term_months'] = f'El plazo mínimo permitido es {product.min_term_months} meses'
+            elif approved_term_months > product.max_term_months:
+                errors['approved_term_months'] = f'El plazo máximo permitido es {product.max_term_months} meses'
+        
+        # Validar tasa de interés
+        if approved_interest_rate is not None:
+            if approved_interest_rate < 0:
+                errors['approved_interest_rate'] = 'La tasa de interés debe ser positiva'
+            elif approved_interest_rate > 100:
+                errors['approved_interest_rate'] = 'La tasa de interés no puede exceder 100%'
+        
+        if errors:
+            raise ValidationError(errors)
+        
+        return True
+    
+    @staticmethod
     @transaction.atomic
     def approve_application(application, approver, **approval_data):
         """
@@ -151,6 +209,30 @@ class LoanApplicationService:
         """
         if application.status not in [LoanApplication.Status.UNDER_REVIEW, LoanApplication.Status.SUBMITTED]:
             raise ValueError("Solo se pueden aprobar solicitudes en revisión")
+        
+        # Validar términos aprobados si se proporcionan
+        approved_amount = approval_data.get('approved_amount')
+        approved_term_months = approval_data.get('approved_term_months')
+        approved_interest_rate = approval_data.get('approved_interest_rate')
+        
+        if any([approved_amount, approved_term_months, approved_interest_rate]):
+            # Usar valores solicitados como default si no se proporcionan
+            from decimal import Decimal
+            
+            if approved_amount is None:
+                approved_amount = application.requested_amount
+            if approved_term_months is None:
+                approved_term_months = application.term_months
+            if approved_interest_rate is None:
+                approved_interest_rate = Decimal(str(application.product.interest_rate))
+            
+            # Validar límites
+            LoanApplicationService.validate_approved_terms(
+                application,
+                approved_amount,
+                approved_term_months,
+                approved_interest_rate
+            )
         
         application.status = LoanApplication.Status.APPROVED
         application.approved_by = approver
