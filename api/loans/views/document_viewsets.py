@@ -64,7 +64,7 @@ class ClientDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         loan_app_id = self.request.query_params.get('loan_application')
         if loan_app_id:
             queryset = queryset.filter(loan_application_id=loan_app_id)
-            count = queryset.filter(loan_application_id=loan_app_id).count()
+            count = queryset.count()
             logger.info(
                 f"[DOCUMENTS] Solicitud {loan_app_id}: {count} documentos encontrados "
                 f"(Usuario: {self.request.user.id}, Cliente: {client.id})"

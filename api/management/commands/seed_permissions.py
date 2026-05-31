@@ -360,6 +360,77 @@ class Command(BaseCommand):
                 },
             ],
             
+            'Contratos de Crédito': [
+                {
+                    'code': 'contracts.view',
+                    'name': 'Ver Contratos',
+                    'description': 'Permite ver contratos de crédito'
+                },
+                {
+                    'code': 'contracts.generate',
+                    'name': 'Generar Contratos',
+                    'description': 'Permite generar contratos desde solicitudes aprobadas'
+                },
+                {
+                    'code': 'contracts.publish',
+                    'name': 'Publicar Contratos',
+                    'description': 'Permite publicar contratos para firma'
+                },
+                {
+                    'code': 'contracts.sign',
+                    'name': 'Firmar Contratos',
+                    'description': 'Permite firmar contratos digitalmente'
+                },
+                {
+                    'code': 'contracts.cancel',
+                    'name': 'Cancelar Contratos',
+                    'description': 'Permite cancelar contratos'
+                },
+                {
+                    'code': 'contracts.download',
+                    'name': 'Descargar Contratos',
+                    'description': 'Permite descargar PDFs de contratos'
+                },
+                {
+                    'code': 'contracts.view_signatures',
+                    'name': 'Ver Firmas',
+                    'description': 'Permite ver estado y detalles de firmas'
+                },
+                {
+                    'code': 'contracts.view_amortization',
+                    'name': 'Ver Tabla de Amortización',
+                    'description': 'Permite ver tabla de amortización de contratos'
+                },
+            ],
+            
+            'Plantillas de Contratos': [
+                {
+                    'code': 'contract_templates.view',
+                    'name': 'Ver Plantillas',
+                    'description': 'Permite ver plantillas de contratos'
+                },
+                {
+                    'code': 'contract_templates.create',
+                    'name': 'Crear Plantillas',
+                    'description': 'Permite crear nuevas plantillas de contratos'
+                },
+                {
+                    'code': 'contract_templates.edit',
+                    'name': 'Editar Plantillas',
+                    'description': 'Permite editar plantillas de contratos existentes'
+                },
+                {
+                    'code': 'contract_templates.delete',
+                    'name': 'Eliminar Plantillas',
+                    'description': 'Permite eliminar plantillas de contratos'
+                },
+                {
+                    'code': 'contract_templates.preview',
+                    'name': 'Vista Previa de Plantillas',
+                    'description': 'Permite ver vista previa de plantillas'
+                },
+            ],
+            
             'Auditoría y Seguridad': [
                 {
                     'code': 'audit.view',

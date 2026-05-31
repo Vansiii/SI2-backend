@@ -65,8 +65,36 @@ def __dir__():
     return sorted(set(globals()) | set(_LAZY_IMPORTS))
 
 
+# ============================================================
+# MODELOS DE CONTRATOS
+# ============================================================
+from api.contracts.models import (
+    Contract,
+    ContractTemplate,
+    ContractSignature,
+    ContractAmortizationSchedule,
+    ContractDocument,
+)
+
+# ============================================================
+# MODELOS DE SUSCRIPCIONES SAAS
+# ============================================================
+from api.saas.models import (
+    SubscriptionPlan,
+    Subscription,
+)
+
+# ============================================================
+# EXPORTAR TODOS LOS MODELOS
+# ============================================================
 __all__ = [
     'TimeStampedModel',
     'TenantModel',
     *sorted(_LAZY_IMPORTS),
+    # Contracts
+    'Contract',
+    'ContractTemplate',
+    'ContractSignature',
+    'ContractAmortizationSchedule',
+    'ContractDocument',
 ]
