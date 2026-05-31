@@ -4,7 +4,6 @@ URLs para solicitudes de crédito
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from . import views
 from .originacion.views import CreditApplicationViewSet
 from .views.rule_viewsets import (
     TenantRuleSetViewSet,
@@ -34,6 +33,18 @@ from .views.approval_viewsets import (
     ApprovalDecisionViewSet,
     EscalationViewSet,
     WorkflowMetricsViewSet,
+)
+# SP3: Créditos Activos y Pagos
+from .views.active_viewsets import ActiveCreditViewSet
+from .views.payment_viewsets import CreditPaymentViewSet
+from .views.client_active_viewsets import MyActiveCreditsViewSet
+from .views.stripe_webhook_views import StripeWebhookViewSet
+# SP4: Solicitudes de Apoyo de Pago
+from .views.support_request_viewsets import SupportRequestViewSet
+# Stripe return pages (mobile)
+from .views.stripe_return_views import stripe_success, stripe_cancel
+from .views.rejection_viewsets import (
+    RejectionReasonViewSet,
 )
 
 app_name = 'loans'
@@ -66,6 +77,9 @@ router.register(r'approvals/queue', ApprovalQueueViewSet, basename='approval-que
 router.register(r'approvals/decisions', ApprovalDecisionViewSet, basename='approval-decision')
 router.register(r'approvals/escalations', EscalationViewSet, basename='escalation')
 
+# SP3-99: Motivos de rechazo parametrizados
+router.register(r'rejection-reasons', RejectionReasonViewSet, basename='rejection-reason')
+
 # Catálogos Centralizados
 router.register(r'catalogs/document-types', DocumentTypeViewSet, basename='document-type')
 router.register(r'catalogs/product-types', ProductTypeViewSet, basename='product-type')
@@ -73,10 +87,21 @@ router.register(r'catalogs/payment-frequencies', PaymentFrequencyViewSet, basena
 router.register(r'catalogs/amortization-systems', AmortizationSystemViewSet, basename='amortization-system')
 router.register(r'catalogs/currencies', CurrencyViewSet, basename='currency')
 
+# SP3: Créditos Activos, Pagos, Cliente Mobile, Stripe y Solicitudes de Apoyo
+router.register(r'active-credits', ActiveCreditViewSet, basename='active-credit')
+router.register(r'payments', CreditPaymentViewSet, basename='payment')
+router.register(r'my-active-credits', MyActiveCreditsViewSet, basename='my-active-credit')
+router.register(r'stripe', StripeWebhookViewSet, basename='stripe')
+router.register(r'support-requests', SupportRequestViewSet, basename='support-request')
+
 urlpatterns = [
     # URLs del router
     path('', include(router.urls)),
-    
+
+    # Stripe return pages (mobile)
+    path('stripe/success/', stripe_success, name='stripe-success'),
+    path('stripe/cancel/', stripe_cancel, name='stripe-cancel'),
+
     # Rutas legacy (compatibilidad) - comentadas hasta que se necesiten
     # path('legacy/', views.LoanApplicationListCreateAPIView.as_view(), name='loan-list-create'),
     # path('legacy/<int:pk>/', views.LoanApplicationDetailAPIView.as_view(), name='loan-detail'),

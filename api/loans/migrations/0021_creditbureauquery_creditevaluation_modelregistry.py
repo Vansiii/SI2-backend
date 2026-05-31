@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('loans', '0019_merge_20260531_0058'),
+        ('loans', '0020_rejectionreason'),
         ('tenants', '0003_create_file_resource_model'),
     ]
 
