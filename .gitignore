@@ -195,3 +195,10 @@ __pycache__/
 # Archivos de configuración local
 local_settings.py
 settings_local.py
+
+# Archivos de documentación markdown (generados por IA)
+*.md
+!README.md
+!CHANGELOG.md
+!CONTRIBUTING.md
+!LICENSE.md
