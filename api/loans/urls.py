@@ -28,6 +28,13 @@ from .views.catalog_viewsets import (
     AmortizationSystemViewSet,
     CurrencyViewSet,
 )
+from .views.approval_viewsets import (
+    WorkflowExecutionViewSet,
+    ApprovalQueueViewSet,
+    ApprovalDecisionViewSet,
+    EscalationViewSet,
+    WorkflowMetricsViewSet,
+)
 
 app_name = 'loans'
 
@@ -51,6 +58,13 @@ router.register(r'staff/documents', StaffDocumentViewSet, basename='staff-docume
 
 # CU-07: Timeline y seguimiento
 router.register(r'my-applications', ClientApplicationViewSet, basename='my-application')
+
+# CU-16: Sistema de aprobaciones y workflows
+router.register(r'workflow-executions', WorkflowExecutionViewSet, basename='workflow-execution')
+router.register(r'workflow/metrics', WorkflowMetricsViewSet, basename='workflow-metrics')
+router.register(r'approvals/queue', ApprovalQueueViewSet, basename='approval-queue')
+router.register(r'approvals/decisions', ApprovalDecisionViewSet, basename='approval-decision')
+router.register(r'approvals/escalations', EscalationViewSet, basename='escalation')
 
 # Catálogos Centralizados
 router.register(r'catalogs/document-types', DocumentTypeViewSet, basename='document-type')

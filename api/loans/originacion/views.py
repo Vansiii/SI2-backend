@@ -298,6 +298,391 @@ class CreditApplicationViewSet(viewsets.ModelViewSet):
     def comments(self, request, pk=None):
         """Obtener o crear comentarios"""
         application = self.get_object()
+    
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """
+        Aprobar solicitud con integración de workflow.
+        
+        POST /api/loans/credit-applications/{id}/approve/
+        Body: {
+            "approved_amount": 5000.00,
+            "approved_term_months": 12,
+            "approved_interest_rate": 15.5,
+            "reason": "Cliente cumple requisitos",
+            "notes": "Notas adicionales",
+            "conditions": ["Condición 1", "Condición 2"]
+        }
+        """
+        application = self.get_object()
+        user = request.user
+        
+        # Validar permisos
+        if not user.is_staff and not user.is_superuser:
+            try:
+                has_role = user.user_roles.filter(
+                    institution=application.institution,
+                    is_active=True,
+                ).exists()
+            except Exception:
+                has_role = False
+            
+            if not has_role:
+                return Response(
+                    {'error': 'No tiene permisos para aprobar solicitudes'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Validar datos
+        approved_amount = request.data.get('approved_amount')
+        approved_term_months = request.data.get('approved_term_months')
+        approved_interest_rate = request.data.get('approved_interest_rate')
+        reason = request.data.get('reason', 'Solicitud aprobada')
+        notes = request.data.get('notes', '')
+        conditions = request.data.get('conditions', [])
+        
+        if not approved_amount:
+            return Response(
+                {'error': 'approved_amount es requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Obtener workflow execution
+            from api.loans.services.workflow_engine import WorkflowEngine
+            from api.loans.models_approval import ApprovalDecision, WorkflowStageExecution
+            
+            workflow_execution = WorkflowEngine.get_workflow_for_application(application)
+            
+            # Obtener etapa actual
+            current_stage_execution = None
+            if workflow_execution:
+                current_stage_execution = workflow_execution.stage_executions.filter(
+                    status__in=['PENDING', 'IN_PROGRESS']
+                ).first()
+            
+            # Cambiar estado usando el servicio existente
+            application = CreditApplicationService.change_status(
+                user=user,
+                application=application,
+                new_status='APPROVED',
+                reason=reason,
+                metadata={
+                    'approved_amount': approved_amount,
+                    'approved_term_months': approved_term_months,
+                    'approved_interest_rate': approved_interest_rate,
+                }
+            )
+            
+            # Registrar decisión de aprobación si hay workflow
+            if current_stage_execution:
+                decision = ApprovalDecision.objects.create(
+                    institution=application.institution,
+                    loan_application=application,
+                    stage_execution=current_stage_execution,
+                    decision='APPROVED',
+                    decided_by=user,
+                    reason=reason,
+                    notes=notes,
+                    approved_amount=approved_amount,
+                    approved_term_months=approved_term_months,
+                    approved_interest_rate=approved_interest_rate,
+                    conditions=conditions,
+                    decision_metadata={
+                        'approved_via': 'approve_endpoint',
+                        'user_role': user.user_roles.filter(
+                            institution=application.institution
+                        ).first().role.name if user.user_roles.filter(
+                            institution=application.institution
+                        ).exists() else 'staff'
+                    }
+                )
+                
+                # Completar etapa actual
+                current_stage_execution.mark_completed(
+                    outcome='SUCCESS',
+                    completed_by=user,
+                    notes=f'Aprobado: {reason}'
+                )
+                
+                # Transicionar workflow si hay siguiente etapa
+                if workflow_execution and current_stage_execution.stage_definition.next_stage_on_success:
+                    try:
+                        WorkflowEngine.transition_to_stage(
+                            workflow_execution=workflow_execution,
+                            target_stage_code=current_stage_execution.stage_definition.next_stage_on_success,
+                            triggered_by=user,
+                            outcome='SUCCESS',
+                            notes=f'Aprobado por {user.get_full_name()}'
+                        )
+                    except Exception as e:
+                        # No fallar si hay error en transición
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Error en transición de workflow: {str(e)}")
+            
+            response_serializer = CreditApplicationDetailSerializer(
+                application, context={'request': request}
+            )
+            return Response(response_serializer.data)
+        
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """
+        Rechazar solicitud con integración de workflow.
+        
+        POST /api/loans/credit-applications/{id}/reject/
+        Body: {
+            "reason": "Motivo del rechazo",
+            "notes": "Notas adicionales"
+        }
+        """
+        application = self.get_object()
+        user = request.user
+        
+        # Validar permisos
+        if not user.is_staff and not user.is_superuser:
+            try:
+                has_role = user.user_roles.filter(
+                    institution=application.institution,
+                    is_active=True,
+                ).exists()
+            except Exception:
+                has_role = False
+            
+            if not has_role:
+                return Response(
+                    {'error': 'No tiene permisos para rechazar solicitudes'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Validar datos
+        reason = request.data.get('reason')
+        notes = request.data.get('notes', '')
+        
+        if not reason:
+            return Response(
+                {'error': 'reason es requerido'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Obtener workflow execution
+            from api.loans.services.workflow_engine import WorkflowEngine
+            from api.loans.models_approval import ApprovalDecision
+            
+            workflow_execution = WorkflowEngine.get_workflow_for_application(application)
+            
+            # Obtener etapa actual
+            current_stage_execution = None
+            if workflow_execution:
+                current_stage_execution = workflow_execution.stage_executions.filter(
+                    status__in=['PENDING', 'IN_PROGRESS']
+                ).first()
+            
+            # Cambiar estado usando el servicio existente
+            application = CreditApplicationService.change_status(
+                user=user,
+                application=application,
+                new_status='REJECTED',
+                reason=reason,
+                metadata={}
+            )
+            
+            # Registrar decisión de rechazo si hay workflow
+            if current_stage_execution:
+                decision = ApprovalDecision.objects.create(
+                    institution=application.institution,
+                    loan_application=application,
+                    stage_execution=current_stage_execution,
+                    decision='REJECTED',
+                    decided_by=user,
+                    reason=reason,
+                    notes=notes,
+                    decision_metadata={
+                        'rejected_via': 'reject_endpoint',
+                        'user_role': user.user_roles.filter(
+                            institution=application.institution
+                        ).first().role.name if user.user_roles.filter(
+                            institution=application.institution
+                        ).exists() else 'staff'
+                    }
+                )
+                
+                # Completar etapa actual
+                current_stage_execution.mark_completed(
+                    outcome='FAILURE',
+                    completed_by=user,
+                    notes=f'Rechazado: {reason}'
+                )
+                
+                # Marcar workflow como completado (estado final)
+                if workflow_execution:
+                    workflow_execution.mark_completed()
+            
+            response_serializer = CreditApplicationDetailSerializer(
+                application, context={'request': request}
+            )
+            return Response(response_serializer.data)
+        
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
+    def return_to_stage(self, request, pk=None):
+        """
+        Devolver solicitud a una etapa anterior.
+        
+        POST /api/loans/credit-applications/{id}/return_to_stage/
+        Body: {
+            "target_stage_code": "DOCUMENTS",
+            "reason": "Faltan documentos",
+            "notes": "Notas adicionales"
+        }
+        """
+        application = self.get_object()
+        user = request.user
+        
+        # Validar permisos
+        if not user.is_staff and not user.is_superuser:
+            try:
+                has_role = user.user_roles.filter(
+                    institution=application.institution,
+                    is_active=True,
+                ).exists()
+            except Exception:
+                has_role = False
+            
+            if not has_role:
+                return Response(
+                    {'error': 'No tiene permisos para devolver solicitudes'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        
+        # Validar datos
+        target_stage_code = request.data.get('target_stage_code')
+        reason = request.data.get('reason')
+        notes = request.data.get('notes', '')
+        
+        if not target_stage_code or not reason:
+            return Response(
+                {'error': 'target_stage_code y reason son requeridos'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Obtener workflow execution
+            from api.loans.services.workflow_engine import WorkflowEngine
+            from api.loans.models_approval import ApprovalDecision
+            
+            workflow_execution = WorkflowEngine.get_workflow_for_application(application)
+            
+            if not workflow_execution:
+                return Response(
+                    {'error': 'La solicitud no tiene workflow activo'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Obtener etapa actual
+            current_stage_execution = workflow_execution.stage_executions.filter(
+                status__in=['PENDING', 'IN_PROGRESS']
+            ).first()
+            
+            if not current_stage_execution:
+                return Response(
+                    {'error': 'No hay etapa activa para devolver'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Registrar decisión de devolución
+            decision = ApprovalDecision.objects.create(
+                institution=application.institution,
+                loan_application=application,
+                stage_execution=current_stage_execution,
+                decision='RETURNED',
+                decided_by=user,
+                reason=reason,
+                notes=notes,
+                decision_metadata={
+                    'returned_to_stage': target_stage_code,
+                    'returned_via': 'return_to_stage_endpoint'
+                }
+            )
+            
+            # Completar etapa actual
+            current_stage_execution.mark_completed(
+                outcome='FAILURE',
+                completed_by=user,
+                notes=f'Devuelto a {target_stage_code}: {reason}'
+            )
+            
+            # Transicionar a etapa anterior
+            WorkflowEngine.transition_to_stage(
+                workflow_execution=workflow_execution,
+                target_stage_code=target_stage_code,
+                triggered_by=user,
+                outcome='FAILURE',
+                notes=f'Devuelto por {user.get_full_name()}: {reason}'
+            )
+            
+            response_serializer = CreditApplicationDetailSerializer(
+                application, context={'request': request}
+            )
+            return Response(response_serializer.data)
+        
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['get'])
+    def workflow_status(self, request, pk=None):
+        """
+        Obtener estado del workflow de la solicitud.
+        
+        GET /api/loans/credit-applications/{id}/workflow_status/
+        """
+        application = self.get_object()
+        
+        try:
+            from api.loans.services.workflow_engine import WorkflowEngine
+            from api.loans.serializers.approval_serializers import (
+                WorkflowExecutionDetailSerializer
+            )
+            
+            workflow_execution = WorkflowEngine.get_workflow_for_application(application)
+            
+            if not workflow_execution:
+                return Response({
+                    'has_workflow': False,
+                    'message': 'La solicitud no tiene workflow activo'
+                })
+            
+            serializer = WorkflowExecutionDetailSerializer(
+                workflow_execution,
+                context={'request': request}
+            )
+            
+            return Response({
+                'has_workflow': True,
+                'workflow': serializer.data
+            })
+        
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         if request.method == 'POST':
             # Crear comentario
