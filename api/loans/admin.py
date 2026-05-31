@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import LoanApplication, LoanApplicationDocument, LoanApplicationComment
 from .models_rejection import RejectionReason
+from .models_scoring import CreditEvaluation, CreditBureauQuery, ModelRegistry
 
 
 @admin.register(LoanApplication)
@@ -64,3 +65,38 @@ class RejectionReasonAdmin(admin.ModelAdmin):
             'fields': ('is_active', 'display_order', 'requires_notes')
         }),
     )
+@admin.register(CreditEvaluation)
+class CreditEvaluationAdmin(admin.ModelAdmin):
+    list_display = [
+        'application', 'score_weighted', 'auto_decision',
+        'status', 'evaluated_at'
+    ]
+    list_filter = ['status', 'auto_decision']
+    search_fields = [
+        'application__application_number',
+        'application__client__first_name',
+        'application__client__last_name'
+    ]
+    readonly_fields = [
+        'evaluated_at', 'evaluation_time_ms', 'model_version'
+    ]
+
+
+@admin.register(CreditBureauQuery)
+class CreditBureauQueryAdmin(admin.ModelAdmin):
+    list_display = [
+        'application', 'provider', 'status',
+        'score_external', 'queried_at'
+    ]
+    list_filter = ['provider', 'status']
+    search_fields = ['application__application_number']
+
+
+@admin.register(ModelRegistry)
+class ModelRegistryAdmin(admin.ModelAdmin):
+    list_display = [
+        'version', 'algorithm', 'status',
+        'is_active', 'training_date'
+    ]
+    list_filter = ['status', 'is_active']
+    search_fields = ['version', 'description']
