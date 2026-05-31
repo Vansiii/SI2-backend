@@ -64,15 +64,13 @@ INSTALLED_APPS = [
     'django_filters',  # Filtering
     'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',  # API Documentation
-    # Aplicación principal
-    'api',
     # Módulos de la aplicación (nueva estructura modular)
     'api.core',
     'api.tenants',
     'api.authentication',
     'api.registration',
     'api.roles',
-    'api.users',
+    'api.users.apps.UsersConfig',
     'api.saas',
     'api.audit',
     'api.storage',  # Gestión de archivos en Supabase Storage

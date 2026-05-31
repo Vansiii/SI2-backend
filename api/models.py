@@ -1,91 +1,69 @@
 """
 Archivo de compatibilidad para imports de modelos.
 
-Este archivo mantiene la compatibilidad con código existente que importa
-modelos desde api.models. Los modelos ahora están organizados en módulos
-separados pero se re-exportan aquí para mantener la compatibilidad.
-
-IMPORTANTE: Para código nuevo, importar directamente desde los módulos:
-    from api.core.models import TimeStampedModel, TenantModel
-    from api.tenants.models import FinancialInstitution
-    from api.authentication.models import PasswordResetToken
-    etc.
+Este módulo evita importar modelos concretos en tiempo de carga de Django,
+porque hacerlo registraba duplicados bajo la app ``api``. Para código nuevo,
+importar directamente desde los módulos específicos.
 """
 
-# ============================================================
-# MODELOS CORE (base abstractos)
-# ============================================================
-from api.core.models import (
-    TimeStampedModel,
-    TenantModel,
-)
+from importlib import import_module
+from typing import TYPE_CHECKING
 
-# ============================================================
-# MODELOS DE TENANTS (instituciones financieras)
-# ============================================================
-from api.tenants.models import (
-    FinancialInstitution,
-    FinancialInstitutionMembership,
-    TenantBranding,
-)
+from api.core.models import TimeStampedModel, TenantModel
 
-# ============================================================
-# MODELOS DE AUTENTICACIÓN
-# ============================================================
-from api.authentication.models import (
-    PasswordResetToken,
-    LoginAttempt,
-    AuthChallenge,
-    EmailTwoFactorCode,
-    TwoFactorAuth,
-)
+_LAZY_IMPORTS = {
+    'FinancialInstitution': 'api.tenants.models',
+    'FinancialInstitutionMembership': 'api.tenants.models',
+    'TenantBranding': 'api.tenants.models',
+    'PasswordResetToken': 'api.authentication.models',
+    'LoginAttempt': 'api.authentication.models',
+    'AuthChallenge': 'api.authentication.models',
+    'EmailTwoFactorCode': 'api.authentication.models',
+    'TwoFactorAuth': 'api.authentication.models',
+    'Permission': 'api.roles.models',
+    'Role': 'api.roles.models',
+    'UserRole': 'api.roles.models',
+    'UserProfile': 'api.users.models',
+    'Collateral': 'api.garantias.models',
+    'Guarantor': 'api.garantias.models',
+    'CollateralDocument': 'api.garantias.models',
+    'CollateralValuation': 'api.garantias.models',
+    'Client': 'api.clients.models',
+    'ClientDocument': 'api.clients.models',
+    'Branch': 'api.branches.models',
+    'CreditProduct': 'api.products.models',
+    'ProductRequirement': 'api.products.models',
+    'AuditLog': 'api.audit.models',
+    'SecurityEvent': 'api.audit.models',
+    'SubscriptionPlan': 'api.saas.models',
+    'Subscription': 'api.saas.models',
+}
 
-# ============================================================
-# MODELOS DE ROLES Y PERMISOS
-# ============================================================
-from api.roles.models import (
-    Permission,
-    Role,
-    UserRole,
-)
+if TYPE_CHECKING:
+    from api.authentication.models import AuthChallenge, EmailTwoFactorCode, LoginAttempt, PasswordResetToken, TwoFactorAuth
+    from api.audit.models import AuditLog, SecurityEvent
+    from api.branches.models import Branch
+    from api.clients.models import Client, ClientDocument
+    from api.garantias.models import Collateral, CollateralDocument, CollateralValuation, Guarantor
+    from api.products.models import CreditProduct, ProductRequirement
+    from api.roles.models import Permission, Role, UserRole
+    from api.saas.models import Subscription, SubscriptionPlan
+    from api.tenants.models import FinancialInstitution, FinancialInstitutionMembership, TenantBranding
+    from api.users.models import UserProfile
 
-# ============================================================
-# MODELOS DE USUARIOS
-# ============================================================
-from api.users.models import (
-    UserProfile,
-)
 
-# ============================================================
-# MODELOS DE CLIENTES
-# ============================================================
-from api.clients.models import (
-    Client,
-    ClientDocument,
-)
+def __getattr__(name: str):
+    if name in _LAZY_IMPORTS:
+        module = import_module(_LAZY_IMPORTS[name])
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-# ============================================================
-# MODELOS DE SUCURSALES
-# ============================================================
-from api.branches.models import (
-    Branch,
-)
 
-# ============================================================
-# MODELOS DE PRODUCTOS CREDITICIOS
-# ============================================================
-from api.products.models import (
-    CreditProduct,
-    ProductRequirement,
-)
+def __dir__():
+    return sorted(set(globals()) | set(_LAZY_IMPORTS))
 
-# ============================================================
-# MODELOS DE AUDITORÍA
-# ============================================================
-from api.audit.models import (
-    AuditLog,
-    SecurityEvent,
-)
 
 # ============================================================
 # MODELOS DE CONTRATOS
@@ -110,44 +88,9 @@ from api.saas.models import (
 # EXPORTAR TODOS LOS MODELOS
 # ============================================================
 __all__ = [
-    # Core
     'TimeStampedModel',
     'TenantModel',
-    # Tenants
-    'FinancialInstitution',
-    'FinancialInstitutionMembership',
-    'TenantBranding',
-    # Authentication
-    'PasswordResetToken',
-    'LoginAttempt',
-    'AuthChallenge',
-    'EmailTwoFactorCode',
-    'TwoFactorAuth',
-    # Roles
-    'Permission',
-    'Role',
-    'UserRole',
-    # Users
-    'UserProfile',
-    # Audit
-    'AuditLog',
-    'SecurityEvent',
-    # Products
-    'CreditProduct',
-    'ProductRequirement',
-    # Garantias
-    'Collateral',
-    'Guarantor',
-    'CollateralDocument',
-    'CollateralValuation',
-    # Clients
-    'Client',
-    'ClientDocument',
-    # Branches
-    'Branch',
-    # SaaS
-    'SubscriptionPlan',
-    'Subscription',
+    *sorted(_LAZY_IMPORTS),
     # Contracts
     'Contract',
     'ContractTemplate',
