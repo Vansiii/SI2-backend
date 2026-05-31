@@ -1,6 +1,11 @@
 from django.contrib import admin
 from .models import LoanApplication, LoanApplicationDocument, LoanApplicationComment
 from .models_scoring import CreditEvaluation, CreditBureauQuery, ModelRegistry
+from .models_active import (
+    ActiveCredit, CreditInstallment, CreditPayment,
+    CreditPaymentAllocation, CreditGracePeriod,
+    CreditRestructuring, CreditStatusHistory,
+)
 
 
 @admin.register(LoanApplication)
@@ -84,3 +89,83 @@ class ModelRegistryAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'is_active']
     search_fields = ['version', 'description']
+
+
+# SP3: Créditos Activos y Pagos
+
+@admin.register(ActiveCredit)
+class ActiveCreditAdmin(admin.ModelAdmin):
+    list_display = [
+        'credit_number', 'client', 'product', 'approved_amount',
+        'current_balance', 'status', 'next_due_date', 'days_in_arrears'
+    ]
+    list_filter = ['status', 'amortization_system', 'payment_frequency', 'currency']
+    search_fields = [
+        'credit_number',
+        'client__first_name', 'client__last_name', 'client__document_number',
+    ]
+    readonly_fields = ['credit_number', 'created_at', 'updated_at']
+    date_hierarchy = 'disbursement_date'
+
+
+@admin.register(CreditInstallment)
+class CreditInstallmentAdmin(admin.ModelAdmin):
+    list_display = [
+        'active_credit', 'installment_number', 'due_date',
+        'total_amount', 'paid_amount', 'status', 'days_overdue'
+    ]
+    list_filter = ['status']
+    search_fields = ['active_credit__credit_number']
+    date_hierarchy = 'due_date'
+
+
+@admin.register(CreditPayment)
+class CreditPaymentAdmin(admin.ModelAdmin):
+    list_display = [
+        'id', 'active_credit', 'amount', 'payment_date',
+        'channel', 'method', 'status'
+    ]
+    list_filter = ['channel', 'status', 'method']
+    search_fields = [
+        'active_credit__credit_number',
+        'reference_number', 'provider_payment_id'
+    ]
+    date_hierarchy = 'payment_date'
+
+
+@admin.register(CreditPaymentAllocation)
+class CreditPaymentAllocationAdmin(admin.ModelAdmin):
+    list_display = [
+        'payment', 'installment', 'amount_applied',
+        'principal_covered', 'interest_covered'
+    ]
+    search_fields = ['payment__active_credit__credit_number']
+
+
+@admin.register(CreditGracePeriod)
+class CreditGracePeriodAdmin(admin.ModelAdmin):
+    list_display = [
+        'active_credit', 'grace_type', 'start_date',
+        'end_date', 'is_active'
+    ]
+    list_filter = ['grace_type', 'is_active']
+    search_fields = ['active_credit__credit_number']
+
+
+@admin.register(CreditRestructuring)
+class CreditRestructuringAdmin(admin.ModelAdmin):
+    list_display = [
+        'active_credit', 'new_interest_rate', 'new_term_periods',
+        'is_active', 'applied_at'
+    ]
+    list_filter = ['is_active']
+    search_fields = ['active_credit__credit_number']
+
+
+@admin.register(CreditStatusHistory)
+class CreditStatusHistoryAdmin(admin.ModelAdmin):
+    list_display = [
+        'active_credit', 'previous_status', 'new_status',
+        'changed_by', 'created_at'
+    ]
+    search_fields = ['active_credit__credit_number']

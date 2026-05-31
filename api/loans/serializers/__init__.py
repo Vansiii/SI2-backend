@@ -6,6 +6,7 @@ Organización:
 - rule_serializers.py: Serializers para CU-09 (Administración de Reglas)
 - document_serializers.py: Serializers para CU-12 (Gestión Documental)
 - timeline_serializers.py: Serializers para CU-07 (Timeline y Seguimiento)
+- active_serializers.py: Serializers para SP3 (Créditos Activos y Pagos)
 """
 
 # Importar serializers principales (mantener compatibilidad con código existente)
@@ -17,7 +18,6 @@ from api.loans.serializers.rule_serializers import (
     TenantRuleSetWriteSerializer,
     EligibilityRuleSerializer,
     CreditProductParameterSerializer,
-    # DocumentRequirementSerializer,  # DEPRECATED: Eliminado
     WorkflowStageDefinitionSerializer,
     DecisionThresholdSerializer,
     RuleSetAuditSerializer,
@@ -39,13 +39,33 @@ from api.loans.serializers.timeline_serializers import (
     LoanApplicationListSerializer,
 )
 
+# Importar serializers de créditos activos (SP3)
+from api.loans.serializers.active_serializers import (
+    ActiveCreditSerializer,
+    ActiveCreditListSerializer,
+    ActiveCreditSummarySerializer,
+    CreditInstallmentSerializer,
+    CreditInstallmentListSerializer,
+    CreditPaymentSerializer,
+    CreditPaymentListSerializer,
+    CreatePaymentSerializer,
+    ConfirmPaymentSerializer,
+    StartOnlinePaymentSerializer,
+    CreditPaymentAllocationSerializer,
+    CreditGracePeriodSerializer,
+    ApplyGracePeriodSerializer,
+    CreditRestructuringSerializer,
+    RestructureSerializer,
+    CreditStatusHistorySerializer,
+    ActivateFromContractSerializer,
+)
+
 __all__ = [
     # Serializers de reglas (CU-09)
     'TenantRuleSetSerializer',
     'TenantRuleSetWriteSerializer',
     'EligibilityRuleSerializer',
     'CreditProductParameterSerializer',
-    # 'DocumentRequirementSerializer',  # DEPRECATED: Eliminado
     'WorkflowStageDefinitionSerializer',
     'DecisionThresholdSerializer',
     'RuleSetAuditSerializer',
@@ -59,4 +79,22 @@ __all__ = [
     'PendingActionSerializer',
     'LoanApplicationTimelineSerializer',
     'LoanApplicationListSerializer',
+    # Serializers de créditos activos (SP3)
+    'ActiveCreditSerializer',
+    'ActiveCreditListSerializer',
+    'ActiveCreditSummarySerializer',
+    'CreditInstallmentSerializer',
+    'CreditInstallmentListSerializer',
+    'CreditPaymentSerializer',
+    'CreditPaymentListSerializer',
+    'CreatePaymentSerializer',
+    'ConfirmPaymentSerializer',
+    'StartOnlinePaymentSerializer',
+    'CreditPaymentAllocationSerializer',
+    'CreditGracePeriodSerializer',
+    'ApplyGracePeriodSerializer',
+    'CreditRestructuringSerializer',
+    'RestructureSerializer',
+    'CreditStatusHistorySerializer',
+    'ActivateFromContractSerializer',
 ]
