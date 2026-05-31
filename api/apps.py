@@ -8,5 +8,7 @@ class ApiConfig(AppConfig):
     def ready(self):
         """
         Importa los signals cuando la aplicación está lista.
+        
+        Nota: Los signals específicos de cada app se importan en sus propios apps.py
         """
-        import api.users.signals
+        pass  # Los signals se importan en cada app individual

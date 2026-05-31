@@ -74,12 +74,12 @@ INSTALLED_APPS = [
     'api.saas',
     'api.audit',
     'api.storage',  # Gestión de archivos en Supabase Storage
-    'api.backups',  # Sistema de backups por tenant
+    'api.backups.apps.BackupsConfig',  # Sistema de backups por tenant
     'api.clients',  # Gestión de clientes/prestatarios
     'api.branches',  # Gestión de sucursales
     'api.products',  # Gestión de productos crediticios
     'api.loans',  # Gestión de solicitudes de crédito
-    'api.contracts',  # Gestión de contratos de crédito
+    'api.contracts.apps.ContractsConfig',  # Gestión de contratos de crédito
     'api.garantias',  # Gestión de garantias
     'api.identity_verification',  # Verificación de identidad con Didit
     'api.reports',  # Reportes personalizables con audio
@@ -176,7 +176,7 @@ LANGUAGES = [
     ('es', 'Spanish'),
 ]
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/La_Paz'  # Bolivia (UTC-4)
 
 USE_I18N = True
 
@@ -415,6 +415,15 @@ SUPABASE_BUCKET = os.getenv('SUPABASE_BUCKET', 'uploads')
 SUPABASE_BACKUP_BUCKET = os.getenv('SUPABASE_BACKUP_BUCKET', 'backups')
 BACKUP_SIGNED_URL_EXPIRATION = int(os.getenv('BACKUP_SIGNED_URL_EXPIRATION', 3600))  # 1 hora
 BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', 30))  # 30 días
+
+# Backup Scheduler Configuration
+# Habilitar/deshabilitar el scheduler automático de backups
+ENABLE_BACKUP_SCHEDULER = env_bool('ENABLE_BACKUP_SCHEDULER', True)
+# Intervalo de verificación en segundos (por defecto 60 segundos = 1 minuto)
+BACKUP_SCHEDULER_INTERVAL = int(os.getenv('BACKUP_SCHEDULER_INTERVAL', 60))
+
+# Testing Configuration
+TESTING = False  # Se establece en True durante la ejecución de tests
 
 # File Upload Limits
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB

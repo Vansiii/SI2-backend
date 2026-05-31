@@ -7,6 +7,68 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class IsBackupAdmin(permissions.BasePermission):
+    """
+    Permiso para gestionar configuraciones de backups programados.
+    
+    Reglas:
+    - Superadmin: puede gestionar todas las configuraciones
+    - Admin Tenant: solo puede gestionar configuraciones de su propio tenant
+    - Otros usuarios: sin acceso
+    """
+    
+    def has_permission(self, request, view):
+        """Verifica si el usuario tiene permiso para acceder."""
+        if not request.user or not request.user.is_authenticated:
+            return False
+        
+        # Superadmin puede todo
+        if request.user.is_superuser:
+            return True
+        
+        # Verificar que tenga perfil
+        if not hasattr(request.user, 'profile'):
+            return False
+        
+        # Superadmin SaaS puede todo
+        if request.user.profile.user_type == 'saas_admin':
+            return True
+        
+        # Obtener la institución del usuario a través de su membresía activa
+        membership = request.user.institution_memberships.filter(is_active=True).first()
+        if not membership:
+            return False
+        
+        # Verificar que sea admin del tenant
+        from api.roles.models import UserRole
+        
+        is_admin = UserRole.objects.filter(
+            user=request.user,
+            institution=membership.institution,
+            is_active=True,
+            role__name__icontains='administrador'
+        ).exists()
+        
+        return is_admin
+    
+    def has_object_permission(self, request, view, obj):
+        """Verifica si el usuario tiene permiso para acceder a un objeto específico."""
+        # Superadmin puede acceder a todo
+        if request.user.is_superuser:
+            return True
+        
+        # Superadmin SaaS puede acceder a todo
+        if hasattr(request.user, 'profile') and request.user.profile.user_type == 'saas_admin':
+            return True
+        
+        # Admin tenant solo puede acceder a configuraciones de su tenant
+        membership = request.user.institution_memberships.filter(is_active=True).first()
+        if membership:
+            return obj.tenant == membership.institution
+        
+        return False
+
+
 class CanManageBackups(permissions.BasePermission):
     """
     Permiso para gestionar backups de tenants.

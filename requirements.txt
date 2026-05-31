@@ -102,3 +102,7 @@ python-magic==0.4.27
 
 # Módulo de contratos - Generación de PDFs
 weasyprint>=60.1
+
+# Backups automáticos (usa threading nativo de Python, no requiere dependencias adicionales)
+# El sistema de backups se ejecuta automáticamente cuando Django inicia
+# Ver: api/backups/scheduler_thread.py y api/backups/apps.py

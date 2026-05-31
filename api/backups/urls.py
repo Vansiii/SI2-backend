@@ -1,10 +1,17 @@
 """
 URLs para API de backups.
 """
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import TenantBackupViewSet
+from .scheduled_views import BackupScheduleConfigViewSet, ScheduledBackupLogViewSet
 
 app_name = 'backups'
+
+# Router para backups programados
+router = DefaultRouter()
+router.register(r'schedules', BackupScheduleConfigViewSet, basename='backup-schedule')
+router.register(r'scheduled-logs', ScheduledBackupLogViewSet, basename='scheduled-backup-log')
 
 # Rutas anidadas bajo tenant
 urlpatterns = [
@@ -72,4 +79,7 @@ urlpatterns = [
         }),
         name='tenant-backup-cleanup-stats'
     ),
+    
+    # Incluir rutas del router (backups programados)
+    path('', include(router.urls)),
 ]
