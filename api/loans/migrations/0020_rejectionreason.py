@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('loans', '0018_workflowexecution_workflowstageexecution_and_more'),
+        ('loans', '0019_merge_20260531_0058'),
         ('tenants', '0003_create_file_resource_model'),
     ]
 
@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
             name='RejectionReason',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(help_text='Código único del motivo (ej: INSUFFICIENT_INCOME)', max_length=50, unique=True, verbose_name='Código')),
+                ('code', models.CharField(help_text='Código único del motivo (ej: INSUFFICIENT_INCOME)', max_length=50, verbose_name='Código')),
                 ('name', models.CharField(help_text='Nombre descriptivo del motivo', max_length=200, verbose_name='Nombre')),
                 ('description', models.TextField(blank=True, help_text='Descripción detallada del motivo', verbose_name='Descripción')),
                 ('category', models.CharField(choices=[('FINANCIAL', 'Financiero'), ('DOCUMENTATION', 'Documentación'), ('CREDIT_HISTORY', 'Historial Crediticio'), ('POLICY', 'Política'), ('RISK', 'Riesgo'), ('OTHER', 'Otro')], default='OTHER', max_length=50, verbose_name='Categoría')),
@@ -33,5 +33,9 @@ class Migration(migrations.Migration):
                 'db_table': 'loans_rejection_reason',
                 'ordering': ['display_order', 'name'],
             },
+        ),
+        migrations.AddConstraint(
+            model_name='rejectionreason',
+            constraint=models.UniqueConstraint(fields=('institution', 'code'), name='unique_institution_rejection_code'),
         ),
     ]

@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('clients', '0006_add_cu11_fields_and_status_history'),
         ('contracts', '0002_make_product_required'),
-        ('loans', '0020_creditbureauquery_creditevaluation_modelregistry'),
+        ('loans', '0021_creditbureauquery_creditevaluation_modelregistry'),
         ('products', '0005_add_product_selections'),
         ('storage', '0001_create_file_resource_model'),
         ('tenants', '0003_create_file_resource_model'),

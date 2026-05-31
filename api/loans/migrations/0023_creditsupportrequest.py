@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('clients', '0006_add_cu11_fields_and_status_history'),
-        ('loans', '0021_activecredit_creditgraceperiod_creditinstallment_and_more'),
+        ('loans', '0022_activecredit_creditgraceperiod_creditinstallment_and_more'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
