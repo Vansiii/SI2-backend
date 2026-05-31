@@ -33,15 +33,13 @@ class ContractTemplate(TenantModel):
         help_text='Código único identificador de la plantilla'
     )
     
-    # Relación con productos (opcional - si es None, es plantilla por defecto)
+    # Relación con productos (obligatorio - cada plantilla debe estar asociada a un producto)
     product = models.ForeignKey(
         'products.CreditProduct',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        on_delete=models.PROTECT,
         related_name='contract_templates',
         verbose_name='Producto Crediticio',
-        help_text='Si se especifica, esta plantilla se usa solo para este producto'
+        help_text='Producto crediticio al que pertenece esta plantilla de contrato'
     )
     
     # Contenido de la plantilla (HTML con variables tipo {{variable}})
@@ -111,8 +109,7 @@ class ContractTemplate(TenantModel):
         ]
     
     def __str__(self):
-        product_name = self.product.name if self.product else 'General'
-        return f"{self.name} ({product_name})"
+        return f"{self.name} - {self.product.name}"
     
     def get_available_variables(self):
         """

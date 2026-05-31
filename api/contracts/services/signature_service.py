@@ -231,7 +231,13 @@ class SignatureService:
             )
         
         # Verificar que el usuario pertenezca a la institución
-        if user.institution != contract.institution:
+        institution = getattr(user, 'institution', None)
+        if not institution and hasattr(user, 'institution_memberships'):
+            membership = user.institution_memberships.filter(is_active=True).first()
+            if membership:
+                institution = membership.institution
+
+        if institution != contract.institution:
             raise ValueError(
                 "El usuario no pertenece a la institución del contrato."
             )

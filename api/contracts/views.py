@@ -7,6 +7,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.db.models import Q, Count, Prefetch
@@ -49,6 +50,23 @@ from api.loans.models import LoanApplication
 logger = logging.getLogger(__name__)
 
 
+def _get_request_tenant(request):
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        return tenant
+
+    user = getattr(request, 'user', None)
+    if user and hasattr(user, 'institution'):
+        return user.institution
+
+    if user and hasattr(user, 'institution_memberships'):
+        membership = user.institution_memberships.filter(is_active=True).first()
+        if membership:
+            return membership.institution
+
+    return None
+
+
 class ContractViewSet(viewsets.ModelViewSet):
     """
     ViewSet para gestión de contratos.
@@ -85,19 +103,15 @@ class ContractViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """
-        Filtra contratos según el usuario.
-        
-        - Staff ve todos los contratos de su tenant
-        - Prestatarios ven solo sus contratos
-        - Garantes ven contratos donde son garantes
+        Filtra contratos por tenant.
         """
-        user = self.request.user
+        tenant = _get_request_tenant(self.request)
         
-        if not hasattr(user, 'institution'):
+        if not tenant:
             return Contract.objects.none()
         
         queryset = Contract.objects.filter(
-            institution=user.institution
+            institution=tenant
         ).select_related(
             'loan_application',
             'loan_application__client',
@@ -110,22 +124,8 @@ class ContractViewSet(viewsets.ModelViewSet):
             'signatures',
             'amortization_schedule',
         )
-        
-        # Si es staff, puede ver todos
-        if hasattr(user, 'is_staff_member') and user.is_staff_member:
-            return queryset
-        
-        # Si es prestatario, solo sus contratos
-        if hasattr(user, 'client_profile'):
-            return queryset.filter(
-                loan_application__client__user=user
-            )
-        
-        # Si es garante, contratos donde es garante
-        return queryset.filter(
-            loan_application__guarantors__user=user,
-            loan_application__guarantors__status='APPROVED'
-        ).distinct()
+
+        return queryset
     
     def get_permissions(self):
         """Permisos según la acción"""
@@ -162,10 +162,17 @@ class ContractViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         try:
+            tenant = _get_request_tenant(request)
+            if not tenant:
+                return Response(
+                    {'error': 'Usuario sin institución asignada'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             # Obtener solicitud
             loan_application = LoanApplication.objects.get(
                 id=serializer.validated_data['loan_application_id'],
-                institution=request.user.institution
+                institution=tenant
             )
             
             # Obtener plantilla (si se especificó)
@@ -173,7 +180,7 @@ class ContractViewSet(viewsets.ModelViewSet):
             if serializer.validated_data.get('template_id'):
                 template = ContractTemplate.objects.get(
                     id=serializer.validated_data['template_id'],
-                    institution=request.user.institution
+                    institution=tenant
                 )
             
             # Generar contrato
@@ -297,10 +304,13 @@ class ContractViewSet(viewsets.ModelViewSet):
                     })
             
             # Si es garante
-            guarantor = contract.loan_application.guarantors.filter(
-                user=request.user,
-                status='APPROVED'
-            ).first()
+            guarantor_email = getattr(request.user, 'email', None)
+            guarantor = None
+            if guarantor_email:
+                guarantor = contract.loan_application.guarantors.filter(
+                    email__iexact=guarantor_email,
+                    status='APPROVED'
+                ).first()
             
             if guarantor:
                 signature = SignatureService.sign_contract_as_guarantor(
@@ -324,29 +334,23 @@ class ContractViewSet(viewsets.ModelViewSet):
                 })
             
             # Si es staff (firma como institución)
-            if hasattr(request.user, 'is_staff_member') and request.user.is_staff_member:
-                signature = SignatureService.sign_contract_as_institution(
-                    contract=contract,
-                    user=request.user,
-                    signature_data=serializer.validated_data['signature_data'],
-                    ip_address=ip_address,
-                    signature_method=serializer.validated_data.get(
-                        'signature_method',
-                        ContractSignature.SignatureMethod.DIGITAL
-                    ),
-                    device_info=serializer.validated_data.get('device_info')
-                )
-                
-                return Response({
-                    'message': 'Contrato firmado exitosamente',
-                    'signature': ContractSignatureSerializer(signature).data,
-                    'contract_status': contract.status
-                })
-            
-            return Response(
-                {'error': 'No tiene permisos para firmar este contrato'},
-                status=status.HTTP_403_FORBIDDEN
+            signature = SignatureService.sign_contract_as_institution(
+                contract=contract,
+                user=request.user,
+                signature_data=serializer.validated_data['signature_data'],
+                ip_address=ip_address,
+                signature_method=serializer.validated_data.get(
+                    'signature_method',
+                    ContractSignature.SignatureMethod.DIGITAL
+                ),
+                device_info=serializer.validated_data.get('device_info')
             )
+            
+            return Response({
+                'message': 'Contrato firmado exitosamente',
+                'signature': ContractSignatureSerializer(signature).data,
+                'contract_status': contract.status
+            })
             
         except ValueError as e:
             return Response(
@@ -497,19 +501,24 @@ class ContractTemplateViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filtra plantillas por tenant"""
         user = self.request.user
+        tenant = _get_request_tenant(self.request)
         
-        if not hasattr(user, 'institution'):
+        if not tenant:
             return ContractTemplate.objects.none()
         
         return ContractTemplate.objects.filter(
-            institution=user.institution
+            institution=tenant
         ).select_related('product').annotate(
             contracts_count=Count('contracts')
         )
     
     def perform_create(self, serializer):
         """Asigna la institución al crear"""
-        serializer.save(institution=self.request.user.institution)
+        tenant = _get_request_tenant(self.request)
+        if not tenant:
+            raise ValidationError('Usuario sin institución asignada.')
+
+        serializer.save(institution=tenant)
     
     @action(detail=True, methods=['get'])
     def preview(self, request, pk=None):
@@ -544,12 +553,13 @@ class ContractAmortizationScheduleViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """Filtra por contrato y tenant"""
         user = self.request.user
+        tenant = _get_request_tenant(self.request)
         
-        if not hasattr(user, 'institution'):
+        if not tenant:
             return ContractAmortizationSchedule.objects.none()
         
         queryset = ContractAmortizationSchedule.objects.filter(
-            institution=user.institution
+            institution=tenant
         ).select_related('contract')
         
         # Filtrar por contrato si se especifica

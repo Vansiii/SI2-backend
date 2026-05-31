@@ -383,15 +383,38 @@ class PDFGeneratorService:
             sample_data: Datos de ejemplo (si es None, usa datos por defecto)
         
         Returns:
-            str: HTML renderizado
+            str: HTML renderizado con estilos CSS
         """
         if sample_data is None:
             sample_data = PDFGeneratorService._get_sample_data()
         
-        return PDFGeneratorService._render_template(
+        # Renderizar el contenido de la plantilla
+        rendered_content = PDFGeneratorService._render_template(
             template.template_content,
             sample_data
         )
+        
+        # Envolver con estilos CSS profesionales
+        css_styles = PDFGeneratorService._get_default_css()
+        
+        full_html = f"""
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vista Previa - {template.name}</title>
+    <style>
+        {css_styles}
+    </style>
+</head>
+<body>
+    {rendered_content}
+</body>
+</html>
+        """
+        
+        return full_html
     
     @staticmethod
     def _get_sample_data() -> dict:

@@ -5,54 +5,60 @@ Permisos personalizados para el módulo de contratos
 from rest_framework import permissions
 
 
+def _get_request_tenant(request):
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        return tenant
+
+    user = getattr(request, 'user', None)
+    if user and hasattr(user, 'institution'):
+        return user.institution
+
+    if user and hasattr(user, 'institution_memberships'):
+        membership = user.institution_memberships.filter(is_active=True).first()
+        if membership:
+            return membership.institution
+
+    return None
+
+
+def _has_custom_permission(request, permission_code: str) -> bool:
+    if not request.user or not request.user.is_authenticated:
+        return False
+
+    if not hasattr(request.user, 'profile'):
+        return False
+
+    if request.user.profile.is_saas_admin():
+        return True
+
+    tenant = _get_request_tenant(request)
+    if not tenant:
+        return False
+
+    return request.user.profile.has_permission(permission_code, tenant)
+
+
 class CanViewContract(permissions.BasePermission):
     """
-    Permiso para ver contratos.
-    
-    - Staff puede ver todos los contratos de su tenant
-    - Prestatarios pueden ver solo sus propios contratos
-    - Garantes pueden ver contratos donde son garantes
+    Permiso para ver contratos basado en permisos del sistema.
     """
     
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated
+        return _has_custom_permission(request, 'contracts.view')
     
     def has_object_permission(self, request, view, obj):
-        # Staff puede ver todos los contratos de su tenant
-        if hasattr(request.user, 'is_staff_member') and request.user.is_staff_member:
-            return obj.institution == request.user.institution
-        
-        # Prestatario puede ver su propio contrato
-        if hasattr(obj.loan_application.client, 'user'):
-            if obj.loan_application.client.user == request.user:
-                return True
-        
-        # Garante puede ver contratos donde es garante
-        if obj.loan_application.guarantors.filter(
-            user=request.user,
-            status='APPROVED'
-        ).exists():
-            return True
-        
-        return False
+        tenant = _get_request_tenant(request)
+        return bool(tenant and obj.institution == tenant)
 
 
 class CanGenerateContract(permissions.BasePermission):
     """
-    Permiso para generar contratos.
-    Solo staff con permisos adecuados.
+    Permiso para generar contratos basado en permisos del sistema.
     """
     
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-        
-        # Verificar que sea staff
-        if not (hasattr(request.user, 'is_staff_member') and request.user.is_staff_member):
-            return False
-        
-        # Verificar permiso específico
-        return request.user.has_perm('contracts.add_contract')
+        return _has_custom_permission(request, 'contracts.generate')
 
 
 class CanManageContractTemplates(permissions.BasePermission):
@@ -65,58 +71,40 @@ class CanManageContractTemplates(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
-        # Solo administradores
-        return request.user.has_perm('contracts.change_contracttemplate')
+        # Verificar permiso personalizado según la acción
+        if view.action == 'create':
+            return _has_custom_permission(request, 'contract_templates.create')
+        elif view.action in ['update', 'partial_update']:
+            return _has_custom_permission(request, 'contract_templates.edit')
+        elif view.action == 'destroy':
+            return _has_custom_permission(request, 'contract_templates.delete')
+        elif view.action in ['list', 'retrieve']:
+            return _has_custom_permission(request, 'contract_templates.view')
+        
+        # Por defecto, verificar permiso de ver
+        return _has_custom_permission(request, 'contract_templates.view')
 
 
 class CanSignContract(permissions.BasePermission):
     """
-    Permiso para firmar contratos.
-    
-    - Prestatarios pueden firmar sus propios contratos
-    - Garantes pueden firmar contratos donde son garantes
-    - Staff puede firmar como institución
+    Permiso para firmar contratos basado en permisos del sistema.
     """
     
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated
+        return _has_custom_permission(request, 'contracts.sign')
     
     def has_object_permission(self, request, view, obj):
-        # Verificar que el contrato pueda ser firmado
-        if not obj.can_be_signed():
-            return False
-        
-        # Staff puede firmar como institución
-        if hasattr(request.user, 'is_staff_member') and request.user.is_staff_member:
-            if obj.institution == request.user.institution:
-                return True
-        
-        # Prestatario puede firmar su propio contrato
-        if hasattr(obj.loan_application.client, 'user'):
-            if obj.loan_application.client.user == request.user:
-                return True
-        
-        # Garante puede firmar si es garante del contrato
-        if obj.loan_application.guarantors.filter(
-            user=request.user,
-            status='APPROVED'
-        ).exists():
-            return True
-        
-        return False
+        tenant = _get_request_tenant(request)
+        return bool(tenant and obj.institution == tenant)
 
 
 class CanCancelContract(permissions.BasePermission):
     """
-    Permiso para cancelar contratos.
-    Solo administradores.
+    Permiso para cancelar contratos basado en permisos del sistema.
     """
     
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-        
-        return request.user.has_perm('contracts.delete_contract')
+        return _has_custom_permission(request, 'contracts.cancel')
     
     def has_object_permission(self, request, view, obj):
         # Verificar que el contrato pueda ser cancelado
@@ -124,23 +112,17 @@ class CanCancelContract(permissions.BasePermission):
             return False
         
         # Verificar que pertenezca al mismo tenant
-        return obj.institution == request.user.institution
+        tenant = _get_request_tenant(request)
+        return bool(tenant and obj.institution == tenant)
 
 
 class CanPublishContract(permissions.BasePermission):
     """
-    Permiso para publicar contratos (cambiar de DRAFT a PENDING_SIGNATURE).
-    Solo staff con permisos adecuados.
+    Permiso para publicar contratos basado en permisos del sistema.
     """
     
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-        
-        if not (hasattr(request.user, 'is_staff_member') and request.user.is_staff_member):
-            return False
-        
-        return request.user.has_perm('contracts.change_contract')
+        return _has_custom_permission(request, 'contracts.publish')
     
     def has_object_permission(self, request, view, obj):
         # Solo contratos en DRAFT pueden ser publicados
@@ -148,22 +130,18 @@ class CanPublishContract(permissions.BasePermission):
             return False
         
         # Verificar que pertenezca al mismo tenant
-        return obj.institution == request.user.institution
+        tenant = _get_request_tenant(request)
+        return bool(tenant and obj.institution == tenant)
 
 
 class CanDownloadContractPDF(permissions.BasePermission):
     """
-    Permiso para descargar el PDF del contrato.
-    
-    - Staff puede descargar todos los contratos de su tenant
-    - Prestatarios pueden descargar sus propios contratos
-    - Garantes pueden descargar contratos donde son garantes
+    Permiso para descargar el PDF del contrato basado en permisos del sistema.
     """
     
     def has_permission(self, request, view):
-        return request.user and request.user.is_authenticated
+        return _has_custom_permission(request, 'contracts.download')
     
     def has_object_permission(self, request, view, obj):
-        # Reutilizar lógica de CanViewContract
-        can_view = CanViewContract()
-        return can_view.has_object_permission(request, view, obj)
+        tenant = _get_request_tenant(request)
+        return bool(tenant and obj.institution == tenant)

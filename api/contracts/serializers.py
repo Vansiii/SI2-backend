@@ -18,6 +18,26 @@ from api.storage.models import FileResource
 User = get_user_model()
 
 
+def _get_request_tenant(request):
+    if not request:
+        return None
+
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        return tenant
+
+    user = getattr(request, 'user', None)
+    if user and hasattr(user, 'institution'):
+        return user.institution
+
+    if user and hasattr(user, 'institution_memberships'):
+        membership = user.institution_memberships.filter(is_active=True).first()
+        if membership:
+            return membership.institution
+
+    return None
+
+
 class ContractTemplateSerializer(serializers.ModelSerializer):
     """Serializer para plantillas de contrato"""
     
@@ -51,11 +71,19 @@ class ContractTemplateSerializer(serializers.ModelSerializer):
         """Retorna el número de contratos generados con esta plantilla"""
         return obj.contracts.count()
     
+    def validate_product(self, value):
+        """Valida que se haya especificado un producto"""
+        if value is None:
+            raise serializers.ValidationError(
+                "El producto crediticio es obligatorio. Cada plantilla debe estar asociada a un producto específico."
+            )
+        return value
+    
     def validate_code(self, value):
         """Valida que el código sea único para el tenant"""
         request = self.context.get('request')
-        if request and hasattr(request.user, 'institution'):
-            institution = request.user.institution
+        institution = _get_request_tenant(request)
+        if institution:
             
             # Si es actualización, excluir el objeto actual
             if self.instance:
@@ -418,13 +446,14 @@ class ContractCreateSerializer(serializers.Serializer):
     def validate_loan_application_id(self, value):
         """Valida que la solicitud exista y esté aprobada"""
         request = self.context.get('request')
-        if not request or not hasattr(request.user, 'institution'):
+        institution = _get_request_tenant(request)
+        if not institution:
             raise serializers.ValidationError("Usuario sin institución asignada.")
         
         try:
             application = LoanApplication.objects.get(
                 id=value,
-                institution=request.user.institution
+                institution=institution
             )
         except LoanApplication.DoesNotExist:
             raise serializers.ValidationError("Solicitud no encontrada.")
@@ -449,13 +478,14 @@ class ContractCreateSerializer(serializers.Serializer):
             return value
         
         request = self.context.get('request')
-        if not request or not hasattr(request.user, 'institution'):
+        institution = _get_request_tenant(request)
+        if not institution:
             raise serializers.ValidationError("Usuario sin institución asignada.")
         
         try:
             template = ContractTemplate.objects.get(
                 id=value,
-                institution=request.user.institution
+                institution=institution
             )
         except ContractTemplate.DoesNotExist:
             raise serializers.ValidationError("Plantilla no encontrada.")
