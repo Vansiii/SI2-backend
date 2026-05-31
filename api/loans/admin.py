@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import LoanApplication, LoanApplicationDocument, LoanApplicationComment
+from .models_rejection import RejectionReason
 from .models_scoring import CreditEvaluation, CreditBureauQuery, ModelRegistry
 
 
@@ -49,6 +50,21 @@ class LoanApplicationCommentAdmin(admin.ModelAdmin):
     search_fields = ['application__application_number', 'comment']
 
 
+@admin.register(RejectionReason)
+class RejectionReasonAdmin(admin.ModelAdmin):
+    list_display = ['name', 'code', 'category', 'is_active', 'display_order', 'requires_notes']
+    list_filter = ['category', 'is_active']
+    search_fields = ['name', 'code', 'description']
+    ordering = ['display_order', 'name']
+    
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('code', 'name', 'description', 'category')
+        }),
+        ('Configuración', {
+            'fields': ('is_active', 'display_order', 'requires_notes')
+        }),
+    )
 @admin.register(CreditEvaluation)
 class CreditEvaluationAdmin(admin.ModelAdmin):
     list_display = [
