@@ -64,15 +64,13 @@ INSTALLED_APPS = [
     'django_filters',  # Filtering
     'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',  # API Documentation
-    # Aplicación principal
-    'api',
     # Módulos de la aplicación (nueva estructura modular)
     'api.core',
     'api.tenants',
     'api.authentication',
     'api.registration',
     'api.roles',
-    'api.users',
+    'api.users.apps.UsersConfig',
     'api.saas',
     'api.audit',
     'api.storage',  # Gestión de archivos en Supabase Storage
@@ -81,6 +79,8 @@ INSTALLED_APPS = [
     'api.branches',  # Gestión de sucursales
     'api.products',  # Gestión de productos crediticios
     'api.loans',  # Gestión de solicitudes de crédito
+    'api.contracts',  # Gestión de contratos de crédito
+    'api.garantias',  # Gestión de garantias
     'api.identity_verification',  # Verificación de identidad con Didit
     'api.reports',  # Reportes personalizables con audio
 ]

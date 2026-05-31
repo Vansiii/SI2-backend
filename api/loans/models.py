@@ -317,6 +317,13 @@ class LoanApplication(TenantModel):
         verbose_name='Activo'
     )
     
+    # Integración con módulo de contratos
+    contract_generated = models.BooleanField(
+        default=False,
+        verbose_name='Contrato Generado',
+        help_text='Indica si se ha generado un contrato para esta solicitud'
+    )
+    
     class Meta:
         verbose_name = 'Solicitud de Crédito'
         verbose_name_plural = 'Solicitudes de Crédito'
