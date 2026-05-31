@@ -102,3 +102,6 @@ python-magic==0.4.27
 
 # Módulo de contratos - Generación de PDFs
 weasyprint>=60.1
+
+# Pagos - Integración con Stripe
+stripe>=9.0.0

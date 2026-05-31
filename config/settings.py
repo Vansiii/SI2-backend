@@ -226,6 +226,14 @@ DEFAULT_FROM_NAME = os.getenv('DEFAULT_FROM_NAME', 'Sistema Bancario')
 # Frontend URL used in links inside transactional emails.
 FRONTEND_URL = (os.getenv('FRONTEND_URL') or 'http://localhost:5173').rstrip('/')
 
+# ─── Stripe Configuration ──────────────────────────────────────────
+
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', '')
+STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+STRIPE_API_VERSION = os.getenv('STRIPE_API_VERSION', '2023-10-16')
+STRIPE_DEFAULT_CURRENCY = os.getenv('STRIPE_DEFAULT_CURRENCY', 'usd')
+
 
 # JWT Configuration
 # https://django-rest-framework-simplejwt.readthedocs.io/
