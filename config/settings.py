@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     'api.branches',  # Gestión de sucursales
     'api.products',  # Gestión de productos crediticios
     'api.loans',  # Gestión de solicitudes de crédito
+    'api.contracts',  # Gestión de contratos de crédito
     'api.garantias',  # Gestión de garantias
     'api.identity_verification',  # Verificación de identidad con Didit
     'api.reports',  # Reportes personalizables con audio
