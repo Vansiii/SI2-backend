@@ -792,3 +792,198 @@ class CreditApplicationViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    # ============================================================
+    # CU-15: Evaluación Crediticia con IA
+    # ============================================================
+
+    @action(detail=True, methods=['post'], url_path='calculate-score')
+    def calculate_score(self, request, pk=None):
+        """
+        Calcula el score crediticio con IA para la solicitud.
+
+        POST /credit-applications/{id}/calculate-score/
+
+        Verifica el feature flag has_ai_scoring del plan.
+        Retorna la evaluación completa.
+        """
+        application = self.get_object()
+
+        # Verificar feature flag has_ai_scoring
+        try:
+            subscription = getattr(application.institution, 'subscription', None)
+            if not subscription:
+                return Response(
+                    {'error': 'Institución sin suscripción activa.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            plan = getattr(subscription, 'plan', None)
+            if not plan or not getattr(plan, 'has_ai_scoring', False):
+                return Response(
+                    {'error': 'El scoring con IA no está habilitado para su plan.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        except Exception:
+            pass
+
+        from api.loans.services.scoring_service import ScoringService
+
+        try:
+            evaluation = ScoringService.calculate_score(application)
+            application.refresh_from_db()
+
+            response_serializer = CreditApplicationDetailSerializer(
+                application, context={'request': request}
+            )
+
+            bureau_query = application.bureau_queries.order_by(
+                '-created_at'
+            ).first()
+
+            return Response({
+                'evaluation_id': evaluation.id,
+                'score_ia': evaluation.score_ia,
+                'score_bureau': evaluation.score_bureau,
+                'score_weighted': evaluation.score_weighted,
+                'risk_level': application.risk_level,
+                'risk_level_display': application.get_risk_level_display(),
+                'debt_to_income_ratio': (
+                    str(application.debt_to_income_ratio)
+                    if application.debt_to_income_ratio else None
+                ),
+                'auto_decision': evaluation.auto_decision,
+                'auto_decision_reason': evaluation.auto_decision_reason,
+                'evaluated_at': (
+                    evaluation.evaluated_at.isoformat()
+                    if evaluation.evaluated_at else None
+                ),
+                'application': response_serializer.data,
+                'sub_scores': {
+                    'payment_capacity': evaluation.payment_capacity_score,
+                    'employment_stability': evaluation.employment_stability_score,
+                    'credit_history': evaluation.credit_history_score,
+                    'debt_burden': evaluation.debt_burden_score,
+                    'demographic': evaluation.demographic_score,
+                } if evaluation.status == 'COMPLETED' else None,
+                'bureau_query': {
+                    'provider': bureau_query.provider if bureau_query else None,
+                    'status': bureau_query.status if bureau_query else None,
+                    'score_external': bureau_query.score_external if bureau_query else None,
+                    'debt_total': (
+                        str(bureau_query.debt_total)
+                        if bureau_query and bureau_query.debt_total else None
+                    ),
+                    'has_defaults': bureau_query.has_defaults if bureau_query else None,
+                    'cic_category': bureau_query.cic_category if bureau_query else None,
+                },
+            })
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error calculando score: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Error calculando score: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['get'])
+    def evaluation(self, request, pk=None):
+        """
+        Retorna la evaluación crediticia más reciente.
+
+        GET /credit-applications/{id}/evaluation/
+
+        Retorna 404 si no hay evaluación.
+        """
+        application = self.get_object()
+
+        from api.loans.models_scoring import CreditEvaluation
+
+        try:
+            evaluation = CreditEvaluation.objects.filter(
+                application=application
+            ).order_by('-created_at').first()
+
+            if not evaluation:
+                return Response(
+                    {'error': 'No hay evaluación crediticia para esta solicitud.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            bureau_query = application.bureau_queries.order_by(
+                '-created_at'
+            ).first()
+
+            return Response({
+                'id': evaluation.id,
+                'status': evaluation.status,
+                'score_ia': evaluation.score_ia,
+                'score_bureau': evaluation.score_bureau,
+                'score_weighted': evaluation.score_weighted,
+                'risk_level': application.risk_level,
+                'risk_level_display': application.get_risk_level_display(),
+                'debt_to_income_ratio': (
+                    str(evaluation.dti_calculated)
+                    if evaluation.dti_calculated else None
+                ),
+                'auto_decision': evaluation.auto_decision,
+                'auto_decision_reason': evaluation.auto_decision_reason,
+                'eligibility_check_passed': evaluation.eligibility_check_passed,
+                'bureau_check_passed': evaluation.bureau_check_passed,
+                'dti_calculated': (
+                    str(evaluation.dti_calculated)
+                    if evaluation.dti_calculated else None
+                ),
+                'recommended_amount': (
+                    str(evaluation.recommended_amount)
+                    if evaluation.recommended_amount else None
+                ),
+                'max_affordable_payment': (
+                    str(evaluation.max_affordable_payment)
+                    if evaluation.max_affordable_payment else None
+                ),
+                'sub_scores': {
+                    'payment_capacity': evaluation.payment_capacity_score,
+                    'employment_stability': evaluation.employment_stability_score,
+                    'credit_history': evaluation.credit_history_score,
+                    'debt_burden': evaluation.debt_burden_score,
+                    'demographic': evaluation.demographic_score,
+                },
+                'model_version': evaluation.model_version,
+                'features_used': evaluation.features_used,
+                'evaluated_at': (
+                    evaluation.evaluated_at.isoformat()
+                    if evaluation.evaluated_at else None
+                ),
+                'evaluation_time_ms': evaluation.evaluation_time_ms,
+                'error_message': evaluation.error_message,
+                'bureau_query': {
+                    'id': bureau_query.id,
+                    'provider': bureau_query.provider,
+                    'status': bureau_query.status,
+                    'score_external': bureau_query.score_external,
+                    'debt_total': (
+                        str(bureau_query.debt_total)
+                        if bureau_query and bureau_query.debt_total else None
+                    ),
+                    'has_defaults': bureau_query.has_defaults if bureau_query else None,
+                    'cic_category': bureau_query.cic_category if bureau_query else None,
+                    'queried_at': (
+                        bureau_query.queried_at.isoformat()
+                        if bureau_query and bureau_query.queried_at else None
+                    ),
+                    'response_time_ms': (
+                        bureau_query.response_time_ms if bureau_query else None
+                    ),
+                } if bureau_query else None,
+            })
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error obteniendo evaluación: {str(e)}", exc_info=True)
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
