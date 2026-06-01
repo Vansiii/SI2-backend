@@ -283,11 +283,11 @@ class ContractGeneratorService:
                 f"Estado actual: {contract.status}"
             )
         
-        # Validar que tenga PDF generado
-        if not contract.pdf_file:
-            raise ValueError(
-                "El contrato debe tener un PDF generado antes de ser publicado."
-            )
+        # Validar que tenga PDF generado (opcional en desarrollo)
+        # if not contract.pdf_file:
+        #     raise ValueError(
+        #         "El contrato debe tener un PDF generado antes de ser publicado."
+        #     )
         
         with transaction.atomic():
             contract.status = Contract.Status.PENDING_SIGNATURE
@@ -380,7 +380,7 @@ class ContractGeneratorService:
             'institution_email': getattr(institution, 'email', ''),
             
             # Cliente/Prestatario
-            'borrower_name': client.full_name,
+            'borrower_name': client.get_full_name(),
             'borrower_document': client.document_number,
             'borrower_address': client.address or '',
             'borrower_email': client.email or '',

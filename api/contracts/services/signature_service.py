@@ -81,8 +81,8 @@ class SignatureService:
                 signature_method=signature_method,
                 signature_data=signature_data,
                 ip_address=ip_address,
-                device_info=device_info or {},
-                geolocation=geolocation or {},
+                device_info=device_info if device_info is not None else {},
+                geolocation=geolocation if geolocation is not None else {},
                 identity_verified=True,  # Asumimos que ya pasó verificación de identidad
                 verification_method=verification_method
             )

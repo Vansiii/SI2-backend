@@ -227,18 +227,26 @@ class Contract(TenantModel):
     
     # Fechas importantes
     contract_date = models.DateField(
+        null=True,
+        blank=True,
         verbose_name='Fecha del Contrato',
         help_text='Fecha de generación del contrato'
     )
     start_date = models.DateField(
+        null=True,
+        blank=True,
         verbose_name='Fecha de Inicio',
         help_text='Fecha de inicio del crédito'
     )
     end_date = models.DateField(
+        null=True,
+        blank=True,
         verbose_name='Fecha de Finalización',
         help_text='Fecha estimada de finalización del crédito'
     )
     first_payment_date = models.DateField(
+        null=True,
+        blank=True,
         verbose_name='Fecha del Primer Pago',
         help_text='Fecha de vencimiento del primer pago'
     )
@@ -347,7 +355,7 @@ class Contract(TenantModel):
         ]
     
     def __str__(self):
-        return f"{self.contract_number} - {self.loan_application.client.full_name}"
+        return f"{self.contract_number} - {self.loan_application.client.get_full_name()}"
     
     def save(self, *args, **kwargs):
         if not self.contract_number:
@@ -411,7 +419,7 @@ class Contract(TenantModel):
         if not self.is_signed_by_borrower:
             pending.append({
                 'type': 'BORROWER',
-                'name': self.loan_application.client.full_name,
+                'name': self.loan_application.client.get_full_name(),
                 'required': True
             })
         

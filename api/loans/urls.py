@@ -34,6 +34,7 @@ from .views.approval_viewsets import (
     EscalationViewSet,
     WorkflowMetricsViewSet,
 )
+<<<<<<< HEAD
 # SP3: Créditos Activos y Pagos
 from .views.active_viewsets import ActiveCreditViewSet
 from .views.payment_viewsets import CreditPaymentViewSet
@@ -46,6 +47,11 @@ from .views.stripe_return_views import stripe_success, stripe_cancel
 from .views.rejection_viewsets import (
     RejectionReasonViewSet,
 )
+=======
+# from .views.active_credits_viewsets import (
+#     ActiveCreditsViewSet,
+# )
+>>>>>>> 0ec3196 (fixes contracts)
 
 app_name = 'loans'
 
@@ -69,6 +75,9 @@ router.register(r'staff/documents', StaffDocumentViewSet, basename='staff-docume
 
 # CU-07: Timeline y seguimiento
 router.register(r'my-applications', ClientApplicationViewSet, basename='my-application')
+
+# CU-18: Créditos activos
+# router.register(r'my-active-credits', ActiveCreditsViewSet, basename='my-active-credit')
 
 # CU-16: Sistema de aprobaciones y workflows
 router.register(r'workflow-executions', WorkflowExecutionViewSet, basename='workflow-execution')

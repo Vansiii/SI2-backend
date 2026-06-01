@@ -11,13 +11,28 @@ def _get_request_tenant(request):
         return tenant
 
     user = getattr(request, 'user', None)
-    if user and hasattr(user, 'institution'):
+    if not user or not user.is_authenticated:
+        return None
+    
+    # Intentar obtener desde user.institution (si existe)
+    if hasattr(user, 'institution'):
         return user.institution
 
-    if user and hasattr(user, 'institution_memberships'):
+    # Intentar obtener desde user.institution_memberships (si existe)
+    if hasattr(user, 'institution_memberships'):
         membership = user.institution_memberships.filter(is_active=True).first()
         if membership:
             return membership.institution
+    
+    # Obtener desde UserRole (sistema actual)
+    from api.roles.models import UserRole
+    user_role = UserRole.objects.filter(
+        user=user,
+        is_active=True
+    ).select_related('institution').first()
+    
+    if user_role:
+        return user_role.institution
 
     return None
 
