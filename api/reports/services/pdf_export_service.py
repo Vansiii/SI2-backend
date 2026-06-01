@@ -861,13 +861,24 @@ class PDFExportService:
             return ''
         
         filter_parts = []
-        for key, value in filters.items():
-            label = self._get_column_label(key)
-            if isinstance(value, list):
-                value_str = ', '.join(str(v) for v in value)
-            else:
-                value_str = str(value)
-            filter_parts.append(f"{label}: {value_str}")
+        if isinstance(filters, list):
+            for f in filters:
+                if isinstance(f, dict):
+                    label = self._get_column_label(f.get('field', ''))
+                    value = f.get('value', '')
+                    if isinstance(value, list):
+                        value_str = ', '.join(str(v) for v in value)
+                    else:
+                        value_str = str(value)
+                    filter_parts.append(f"{label}: {value_str}")
+        else:
+            for key, value in filters.items():
+                label = self._get_column_label(key)
+                if isinstance(value, list):
+                    value_str = ', '.join(str(v) for v in value)
+                else:
+                    value_str = str(value)
+                filter_parts.append(f"{label}: {value_str}")
         
         return ' | '.join(filter_parts)
     

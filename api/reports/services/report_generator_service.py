@@ -513,7 +513,6 @@ class ReportGeneratorService:
             
             # === PRODUCTOS CREDITICIOS ===
             # Información básica
-            'product_name': 'name',
             'product_code': 'code',
             'product_type': 'product_type__name',
             'description': 'description',

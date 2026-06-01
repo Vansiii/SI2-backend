@@ -211,11 +211,7 @@ class ExportService:
     
     def __init__(self):
         """Inicializa el servicio de exportación."""
-        if not XLSX_AVAILABLE:
-            raise ImportError(
-                "openpyxl no está instalado. "
-                "Instalar con: pip install openpyxl"
-            )
+        pass
     
     def export(
         self,
@@ -248,6 +244,10 @@ class ExportService:
         if format == 'csv':
             return self._export_csv(data, columns, report_metadata)
         elif format == 'xlsx':
+            if not XLSX_AVAILABLE:
+                raise ImportError(
+                    "openpyxl no está instalado. Instalar con: pip install openpyxl"
+                )
             return self._export_xlsx(data, columns, report_metadata)
         elif format == 'pdf':
             return self._export_pdf(data, columns, report_metadata)
