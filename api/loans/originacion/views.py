@@ -832,6 +832,32 @@ class CreditApplicationViewSet(viewsets.ModelViewSet):
             evaluation = ScoringService.calculate_score(application)
             application.refresh_from_db()
 
+            # CU-15: Si la decisión automática requiere revisión manual,
+            # transicionar la solicitud a IN_REVIEW para que el analista
+            # pueda aprobar/rechazar desde la cola de revisión.
+            if evaluation.auto_decision in ('MANUAL_REVIEW', 'ESCALATE'):
+                try:
+                    if application.status not in (
+                        'APPROVED', 'REJECTED', 'DISBURSED', 'CANCELLED'
+                    ):
+                        CreditApplicationService.change_status(
+                            user=request.user,
+                            application=application,
+                            new_status='IN_REVIEW',
+                            reason=(
+                                f'Evaluación IA: {evaluation.get_auto_decision_display()}'
+                                f' (score: {evaluation.score_weighted})'
+                            ),
+                            metadata={}
+                        )
+                        application.refresh_from_db()
+                except Exception as transition_error:
+                    import logging
+                    _log = logging.getLogger(__name__)
+                    _log.warning(
+                        f"No se pudo transicionar a IN_REVIEW: {transition_error}"
+                    )
+
             response_serializer = CreditApplicationDetailSerializer(
                 application, context={'request': request}
             )
