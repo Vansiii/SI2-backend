@@ -313,6 +313,10 @@ class BackupSchedulerService:
         )
         
         if created:
+            # Asegurar que el usuario tenga una contraseña inusable
+            if not user.has_usable_password():
+                user.set_unusable_password()
+                user.save(update_fields=['password'])
             logger.info(f"Usuario del sistema creado: {system_username} ({system_email})")
         
         return user

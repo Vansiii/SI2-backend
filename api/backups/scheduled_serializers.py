@@ -214,6 +214,40 @@ class BackupScheduleConfigUpdateSerializer(serializers.ModelSerializer):
             'notification_emails',
         ]
     
+    def validate(self, data):
+        freq = data.get('frequency', getattr(self.instance, 'frequency', None))
+        
+        if freq == BackupScheduleConfig.Frequency.WEEKLY:
+            day = data.get('day_of_week', getattr(self.instance, 'day_of_week', None))
+            if not day:
+                raise serializers.ValidationError({
+                    'day_of_week': 'Requerido para backups semanales'
+                })
+        
+        if freq == BackupScheduleConfig.Frequency.MONTHLY:
+            dom = data.get('day_of_month', getattr(self.instance, 'day_of_month', None))
+            if not dom:
+                raise serializers.ValidationError({
+                    'day_of_month': 'Requerido para backups mensuales'
+                })
+        
+        if freq == BackupScheduleConfig.Frequency.CUSTOM:
+            cron = data.get('cron_expression', getattr(self.instance, 'cron_expression', None))
+            if not cron:
+                raise serializers.ValidationError({
+                    'cron_expression': 'Requerido para backups personalizados'
+                })
+        
+        hour = data.get('hour', getattr(self.instance, 'hour', 0) if self.instance else 0)
+        minute = data.get('minute', getattr(self.instance, 'minute', 0) if self.instance else 0)
+        
+        if not (0 <= hour <= 23):
+            raise serializers.ValidationError({'hour': 'Debe estar entre 0 y 23'})
+        if not (0 <= minute <= 59):
+            raise serializers.ValidationError({'minute': 'Debe estar entre 0 y 59'})
+        
+        return data
+    
     def update(self, instance, validated_data):
         """Actualiza configuración y recalcula next_run_at si es necesario."""
         import logging
