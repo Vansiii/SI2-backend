@@ -242,13 +242,12 @@ class BackupScheduleConfig(TimeStampedModel):
         Returns:
             datetime: Próxima fecha de ejecución en UTC con timezone aware
         """
-        from datetime import datetime, timedelta
-        import pytz
+        from datetime import datetime, timedelta, timezone as dt_timezone
+        from zoneinfo import ZoneInfo
         
         now = timezone.now()
-        # Obtener la zona horaria configurada
-        tz = pytz.timezone(timezone.get_current_timezone_name())
-        # Convertir a hora local
+        tz_name = timezone.get_current_timezone_name()
+        tz = ZoneInfo(tz_name)
         now_local = now.astimezone(tz)
         
         if self.frequency == self.Frequency.DAILY:
@@ -262,8 +261,7 @@ class BackupScheduleConfig(TimeStampedModel):
             if next_run_local <= now_local:
                 next_run_local += timedelta(days=1)
             
-            # Ya está en timezone aware, solo convertir a UTC
-            return next_run_local.astimezone(pytz.UTC)
+            return next_run_local.astimezone(dt_timezone.utc)
         
         elif self.frequency == self.Frequency.WEEKLY:
             # Próxima ejecución: próximo día de la semana configurado (hora local)
@@ -294,8 +292,10 @@ class BackupScheduleConfig(TimeStampedModel):
                 microsecond=0
             )
             
-            # Convertir de vuelta a UTC
-            return timezone.make_aware(next_run_local.replace(tzinfo=None), timezone.get_current_timezone())
+            return timezone.make_aware(
+                next_run_local.replace(tzinfo=None),
+                timezone.get_current_timezone()
+            )
         
         elif self.frequency == self.Frequency.MONTHLY:
             # Próxima ejecución: próximo día del mes configurado (hora local)
@@ -318,12 +318,12 @@ class BackupScheduleConfig(TimeStampedModel):
                 else:
                     next_run_local = next_run_local.replace(month=now_local.month + 1)
             
-            # Convertir de vuelta a UTC
-            return timezone.make_aware(next_run_local.replace(tzinfo=None), timezone.get_current_timezone())
+            return timezone.make_aware(
+                next_run_local.replace(tzinfo=None),
+                timezone.get_current_timezone()
+            )
         
         elif self.frequency == self.Frequency.CUSTOM:
-            # Para cron expressions, necesitaríamos una librería como croniter
-            # Por ahora retornamos None
             return None
         
         return None
