@@ -254,10 +254,7 @@ class ContractSerializer(serializers.ModelSerializer):
         source='loan_application.application_number',
         read_only=True
     )
-    client_name = serializers.CharField(
-        source='loan_application.client.full_name',
-        read_only=True
-    )
+    client_name = serializers.SerializerMethodField()
     client_document = serializers.CharField(
         source='loan_application.client.document_number',
         read_only=True
@@ -270,6 +267,12 @@ class ContractSerializer(serializers.ModelSerializer):
         source='template.name',
         read_only=True
     )
+    
+    # Fechas - permitir null para evitar errores de serialización
+    contract_date = serializers.DateField(allow_null=True, required=False)
+    start_date = serializers.DateField(allow_null=True, required=False)
+    end_date = serializers.DateField(allow_null=True, required=False)
+    first_payment_date = serializers.DateField(allow_null=True, required=False)
     
     # Estado
     status_display = serializers.CharField(
@@ -358,6 +361,10 @@ class ContractSerializer(serializers.ModelSerializer):
             'version',
         ]
     
+    def get_client_name(self, obj):
+        """Retorna el nombre completo del cliente"""
+        return obj.loan_application.client.get_full_name()
+    
     def get_pending_signatures(self, obj):
         """Retorna información sobre firmas pendientes"""
         return obj.pending_signatures
@@ -396,10 +403,7 @@ class ContractListSerializer(serializers.ModelSerializer):
         source='loan_application.application_number',
         read_only=True
     )
-    client_name = serializers.CharField(
-        source='loan_application.client.full_name',
-        read_only=True
-    )
+    client_name = serializers.SerializerMethodField()
     product_name = serializers.CharField(
         source='loan_application.product.name',
         read_only=True
@@ -410,6 +414,9 @@ class ContractListSerializer(serializers.ModelSerializer):
     )
     is_signed_by_borrower = serializers.BooleanField(read_only=True)
     all_signatures_complete = serializers.BooleanField(read_only=True)
+    
+    # Fechas - permitir null para evitar errores de serialización
+    contract_date = serializers.DateField(allow_null=True, required=False)
     
     class Meta:
         model = Contract
@@ -431,6 +438,10 @@ class ContractListSerializer(serializers.ModelSerializer):
             'all_signatures_complete',
             'created_at',
         ]
+    
+    def get_client_name(self, obj):
+        """Retorna el nombre completo del cliente"""
+        return obj.loan_application.client.get_full_name()
 
 
 class ContractCreateSerializer(serializers.Serializer):
@@ -501,12 +512,13 @@ class ContractSignSerializer(serializers.Serializer):
     
     signature_method = serializers.ChoiceField(
         choices=ContractSignature.SignatureMethod.choices,
-        default=ContractSignature.SignatureMethod.DIGITAL
+        default=ContractSignature.SignatureMethod.DIGITAL,
+        required=False
     )
-    signature_data = serializers.CharField(required=True)
-    device_info = serializers.JSONField(required=False, allow_null=True)
-    geolocation = serializers.JSONField(required=False, allow_null=True)
-    verification_method = serializers.CharField(required=False, allow_blank=True)
+    signature_data = serializers.CharField(required=True, allow_blank=False)
+    device_info = serializers.JSONField(required=False, allow_null=True, default=dict)
+    geolocation = serializers.JSONField(required=False, allow_null=True, default=dict)
+    verification_method = serializers.CharField(required=False, allow_blank=True, default='')
     
     def validate_signature_data(self, value):
         """Valida que los datos de firma no estén vacíos"""
@@ -514,4 +526,20 @@ class ContractSignSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "Los datos de firma son requeridos."
             )
+        return value.strip()
+    
+    def validate_device_info(self, value):
+        """Valida y normaliza device_info"""
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("device_info debe ser un objeto JSON")
+        return value
+    
+    def validate_geolocation(self, value):
+        """Valida y normaliza geolocation"""
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("geolocation debe ser un objeto JSON")
         return value

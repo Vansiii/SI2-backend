@@ -72,6 +72,7 @@ class LoanApplicationSerializer(serializers.ModelSerializer):
     approved_by_detail = UserSerializer(source='approved_by', read_only=True)
     documents = LoanApplicationDocumentSerializer(many=True, read_only=True)
     comments = LoanApplicationCommentSerializer(many=True, read_only=True)
+    contract = serializers.SerializerMethodField()
     
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     risk_level_display = serializers.CharField(source='get_risk_level_display', read_only=True)
@@ -89,6 +90,16 @@ class LoanApplicationSerializer(serializers.ModelSerializer):
         from api.products.serializers import CreditProductListSerializer
         return CreditProductListSerializer(obj.product).data
     
+    def get_contract(self, obj):
+        """Obtiene el contrato asociado si existe."""
+        try:
+            if hasattr(obj, 'contract') and obj.contract:
+                from api.contracts.serializers import ContractListSerializer
+                return ContractListSerializer(obj.contract).data
+        except Exception:
+            pass
+        return None
+    
     class Meta:
         model = LoanApplication
         fields = [
@@ -100,7 +111,7 @@ class LoanApplicationSerializer(serializers.ModelSerializer):
             'approved_amount', 'approved_term_months', 'approved_interest_rate',
             'monthly_payment', 'reviewed_by', 'reviewed_by_detail',
             'approved_by', 'approved_by_detail', 'notes', 'rejection_reason',
-            'documents', 'comments', 'is_pending', 'can_be_edited',
+            'documents', 'comments', 'contract', 'is_pending', 'can_be_edited',
             'can_be_submitted', 'can_be_approved', 'can_be_rejected',
             'can_be_disbursed', 'created_at', 'updated_at'
         ]

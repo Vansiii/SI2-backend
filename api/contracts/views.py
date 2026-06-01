@@ -56,13 +56,28 @@ def _get_request_tenant(request):
         return tenant
 
     user = getattr(request, 'user', None)
-    if user and hasattr(user, 'institution'):
+    if not user or not user.is_authenticated:
+        return None
+    
+    # Intentar obtener desde user.institution (si existe)
+    if hasattr(user, 'institution'):
         return user.institution
 
-    if user and hasattr(user, 'institution_memberships'):
+    # Intentar obtener desde user.institution_memberships (si existe)
+    if hasattr(user, 'institution_memberships'):
         membership = user.institution_memberships.filter(is_active=True).first()
         if membership:
             return membership.institution
+    
+    # Obtener desde UserRole (sistema actual)
+    from api.roles.models import UserRole
+    user_role = UserRole.objects.filter(
+        user=user,
+        is_active=True
+    ).select_related('institution').first()
+    
+    if user_role:
+        return user_role.institution
 
     return None
 
@@ -197,8 +212,12 @@ class ContractViewSet(viewsets.ModelViewSet):
             # Generar tabla de amortización
             AmortizationService.generate_amortization_schedule(contract)
             
-            # Generar PDF
-            PDFGeneratorService.generate_and_save_contract_pdf(contract)
+            # Generar PDF (opcional - puede fallar en Windows sin GTK+)
+            try:
+                PDFGeneratorService.generate_and_save_contract_pdf(contract)
+            except Exception as pdf_error:
+                logger.warning(f"No se pudo generar PDF automáticamente: {pdf_error}")
+                # El contrato se crea sin PDF, se puede generar después
             
             # Serializar respuesta
             response_serializer = ContractSerializer(
@@ -273,16 +292,32 @@ class ContractViewSet(viewsets.ModelViewSet):
         """
         contract = self.get_object()
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        
+        if not serializer.is_valid():
+            logger.error(f"Error de validación al firmar contrato {contract.id}: {serializer.errors}")
+            return Response(
+                {'error': 'Datos de firma inválidos', 'details': serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         try:
             # Obtener IP del request
             ip_address = self._get_client_ip(request)
             
+            # Log para debugging
+            logger.info(
+                f"Intento de firma de contrato {contract.id} por usuario {request.user.email} (ID: {request.user.id})"
+            )
+            
             # Determinar tipo de firmante
-            # Si es el prestatario
+            # 1. Verificar si es el prestatario
             if hasattr(contract.loan_application.client, 'user'):
-                if contract.loan_application.client.user == request.user:
+                client_user = contract.loan_application.client.user
+                logger.info(
+                    f"Cliente del contrato: {client_user.email} (ID: {client_user.id}), "
+                    f"Usuario que firma: {request.user.email} (ID: {request.user.id})"
+                )
+                if client_user == request.user:
                     signature = SignatureService.sign_contract_as_borrower(
                         contract=contract,
                         user=request.user,
@@ -303,7 +338,7 @@ class ContractViewSet(viewsets.ModelViewSet):
                         'contract_status': contract.status
                     })
             
-            # Si es garante
+            # 2. Verificar si es un garante
             guarantor_email = getattr(request.user, 'email', None)
             guarantor = None
             if guarantor_email:
@@ -333,29 +368,61 @@ class ContractViewSet(viewsets.ModelViewSet):
                     'contract_status': contract.status
                 })
             
-            # Si es staff (firma como institución)
-            signature = SignatureService.sign_contract_as_institution(
-                contract=contract,
-                user=request.user,
-                signature_data=serializer.validated_data['signature_data'],
-                ip_address=ip_address,
-                signature_method=serializer.validated_data.get(
-                    'signature_method',
-                    ContractSignature.SignatureMethod.DIGITAL
-                ),
-                device_info=serializer.validated_data.get('device_info')
+            # 3. Verificar si es staff/empleado de la institución (firma como institución)
+            # Solo permitir si el usuario tiene permisos de staff
+            if request.user.is_staff or hasattr(request.user, 'institution_memberships'):
+                # Verificar que pertenezca a la institución del contrato
+                user_institution = None
+                if hasattr(request.user, 'institution'):
+                    user_institution = request.user.institution
+                elif hasattr(request.user, 'institution_memberships'):
+                    membership = request.user.institution_memberships.filter(is_active=True).first()
+                    if membership:
+                        user_institution = membership.institution
+                
+                if user_institution == contract.institution:
+                    signature = SignatureService.sign_contract_as_institution(
+                        contract=contract,
+                        user=request.user,
+                        signature_data=serializer.validated_data['signature_data'],
+                        ip_address=ip_address,
+                        signature_method=serializer.validated_data.get(
+                            'signature_method',
+                            ContractSignature.SignatureMethod.DIGITAL
+                        ),
+                        device_info=serializer.validated_data.get('device_info')
+                    )
+                    
+                    return Response({
+                        'message': 'Contrato firmado exitosamente como representante de la institución',
+                        'signature': ContractSignatureSerializer(signature).data,
+                        'contract_status': contract.status
+                    })
+            
+            # Si no es ninguno de los anteriores, no tiene permiso para firmar
+            logger.warning(
+                f"Usuario {request.user.email} intentó firmar contrato {contract.id} "
+                f"sin ser prestatario, garante ni staff de la institución"
+            )
+            return Response(
+                {
+                    'error': 'No tiene permiso para firmar este contrato',
+                    'detail': 'Debe ser el prestatario, un garante aprobado o un representante de la institución'
+                },
+                status=status.HTTP_403_FORBIDDEN
             )
             
-            return Response({
-                'message': 'Contrato firmado exitosamente',
-                'signature': ContractSignatureSerializer(signature).data,
-                'contract_status': contract.status
-            })
-            
         except ValueError as e:
+            logger.error(f"Error de negocio al firmar contrato {contract.id}: {str(e)}")
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.exception(f"Error inesperado al firmar contrato {contract.id}: {str(e)}")
+            return Response(
+                {'error': f'Error al procesar la firma: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
     @action(detail=True, methods=['get'])
