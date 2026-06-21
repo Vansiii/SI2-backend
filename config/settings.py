@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     'api.garantias',  # Gestión de garantias
     'api.identity_verification',  # Verificación de identidad con Didit
     'api.reports',  # Reportes personalizables con audio
+    'api.notifications.apps.NotificationsConfig',  # Notificaciones Push
 ]
 
 MIDDLEWARE = [
@@ -233,6 +234,11 @@ STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
 STRIPE_API_VERSION = os.getenv('STRIPE_API_VERSION', '2023-10-16')
 STRIPE_DEFAULT_CURRENCY = os.getenv('STRIPE_DEFAULT_CURRENCY', 'usd')
+
+
+# ─── Firebase Cloud Messaging (FCM) Configuration ────────────────
+
+FCM_SERVER_KEY = os.getenv('FCM_SERVER_KEY', '')
 
 
 # JWT Configuration
@@ -429,6 +435,18 @@ BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', 30))  # 30 días
 ENABLE_BACKUP_SCHEDULER = env_bool('ENABLE_BACKUP_SCHEDULER', True)
 # Intervalo de verificación en segundos (por defecto 60 segundos = 1 minuto)
 BACKUP_SCHEDULER_INTERVAL = int(os.getenv('BACKUP_SCHEDULER_INTERVAL', 60))
+
+# Mora Alert Scheduler Configuration
+# Habilitar/deshabilitar el scheduler automático de alertas de mora
+ENABLE_MORA_SCHEDULER = env_bool('ENABLE_MORA_SCHEDULER', True)
+# Intervalo de verificación en segundos (por defecto 60 segundos)
+MORA_SCHEDULER_CHECK_INTERVAL = int(os.getenv('MORA_SCHEDULER_CHECK_INTERVAL', 60))
+# Hora predeterminada para enviar alertas (por defecto 8:00 AM)
+MORA_SCHEDULER_DEFAULT_HOUR = int(os.getenv('MORA_SCHEDULER_DEFAULT_HOUR', 8))
+# Minuto predeterminado
+MORA_SCHEDULER_DEFAULT_MINUTE = int(os.getenv('MORA_SCHEDULER_DEFAULT_MINUTE', 0))
+# Días mínimos de mora para incluir en alertas
+MORA_ALERT_MINIMUM_DAYS = int(os.getenv('MORA_ALERT_MINIMUM_DAYS', 1))
 
 # Testing Configuration
 TESTING = False  # Se establece en True durante la ejecución de tests

@@ -170,7 +170,7 @@ class WorkflowService:
         
         # Ejecutar acciones post-transición
         try:
-            WorkflowService._execute_post_transition_actions(application, to_status)
+            WorkflowService._execute_post_transition_actions(application, from_status, to_status)
             logger.info(f"[WORKFLOW] Acciones post-transicion ejecutadas OK")
         except Exception as e:
             logger.error(
@@ -406,12 +406,13 @@ class WorkflowService:
                 logger.error(f"Error generando contrato: {str(e)}")
     
     @staticmethod
-    def _execute_post_transition_actions(loan_application, to_status: str):
+    def _execute_post_transition_actions(loan_application, from_status: str, to_status: str):
         """
         Ejecuta acciones después de la transición.
         
         Args:
             loan_application: LoanApplication instance
+            from_status: Estado origen
             to_status: Estado destino
         """
         logger.info(f"Ejecutando acciones post-transición para {to_status}")
@@ -427,16 +428,19 @@ class WorkflowService:
             except Exception as e:
                 logger.error(f"Error registrando desembolso: {str(e)}")
         
-        if to_status == 'REJECTED':
-            # Notificar rechazo
-            try:
-                from api.notifications.services import NotificationService
-                NotificationService.send_rejection_notification(loan_application)
-                logger.info(f"Notificación de rechazo enviada para solicitud {loan_application.id}")
-            except ImportError:
-                logger.warning("NotificationService no disponible")
-            except Exception as e:
-                logger.error(f"Error enviando notificación: {str(e)}")
+        # Enviar notificación de cambio de estado
+        try:
+            from api.notifications.services import CreditApplicationNotificationService
+            notification_service = CreditApplicationNotificationService()
+            success, error = notification_service.send_status_change(
+                loan_application, from_status, to_status
+            )
+            if success:
+                logger.info(f"Notificación de estado enviada para solicitud {loan_application.id}: {from_status} -> {to_status}")
+            else:
+                logger.warning(f"Error enviando notificación de estado: {error}")
+        except Exception as e:
+            logger.error(f"Error enviando notificación de estado: {str(e)}")
     
     @staticmethod
     def _get_default_message(status: str) -> str:
