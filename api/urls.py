@@ -42,5 +42,7 @@ urlpatterns = [
     path('integrations/', include('api.integrations.urls')),
     # Chatbot de asistencia virtual con Groq
     path('chatbot/', include('api.chatbot.urls')),
+    # CU-21: Notificaciones Push
+    path('notifications/', include('api.notifications.urls')),
 ]
 

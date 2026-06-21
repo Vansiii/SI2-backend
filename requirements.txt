@@ -105,3 +105,9 @@ weasyprint>=60.1
 
 # Pagos - Integración con Stripe
 stripe>=9.0.0
+
+# Scheduling - Tareas programadas
+django-cron==0.6.0
+
+# Firebase Cloud Messaging
+firebase-admin>=7.4.0

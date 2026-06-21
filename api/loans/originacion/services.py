@@ -204,6 +204,30 @@ class CreditApplicationService:
                 'client_id': client.id,
             }
         )
+
+        # Enviar notificación de creación al cliente
+        try:
+            from api.notifications.services import CreditApplicationNotificationService
+            notification_service = CreditApplicationNotificationService()
+            success, error = notification_service.send_application_created(application)
+            if success:
+                logger.info(f"[CREATE_DRAFT] Notificación enviada para solicitud {application.id}")
+            else:
+                logger.warning(f"[CREATE_DRAFT] Error enviando notificación al cliente: {error}")
+        except Exception as e:
+            logger.error(f"[CREATE_DRAFT] Error enviando notificación al cliente: {str(e)}")
+
+        # Enviar notificación al admin
+        try:
+            from api.notifications.services import CreditApplicationNotificationService
+            notification_service = CreditApplicationNotificationService()
+            admin_success, admin_error = notification_service.send_application_created_to_admin(application)
+            if admin_success:
+                logger.info(f"[CREATE_DRAFT] Notificación enviada al admin para solicitud {application.id}")
+            else:
+                logger.warning(f"[CREATE_DRAFT] Error enviando notificación al admin: {admin_error}")
+        except Exception as e:
+            logger.error(f"[CREATE_DRAFT] Error enviando notificación al admin: {str(e)}")
         
         return application
     
