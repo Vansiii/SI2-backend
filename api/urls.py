@@ -38,4 +38,9 @@ urlpatterns = [
     path('', include('api.audit.urls')),
     # CU-39: Reportes personalizables con audio
     path('reports/', include('api.reports.urls')),
+    # Gestión de integraciones externas
+    path('integrations/', include('api.integrations.urls')),
+    # Chatbot de asistencia virtual con Groq
+    path('chatbot/', include('api.chatbot.urls')),
 ]
+

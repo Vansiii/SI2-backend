@@ -1,16 +1,7 @@
 """
 Comando de Django para ejecutar backups programados.
 
-Este comando debe ser ejecutado periódicamente (ej: cada minuto) mediante:
-- Cron job en Linux/Mac
-- Task Scheduler en Windows
-- Celery Beat (recomendado para producción)
-
-Ejemplo de cron job (ejecutar cada minuto):
-* * * * * cd /path/to/project && python manage.py run_scheduled_backups >> /var/log/scheduled_backups.log 2>&1
-
-Ejemplo de Celery Beat (en celery.py):
-from celery.schedules import crontab
+Est
 
 app.conf.beat_schedule = {
     'run-scheduled-backups': {
