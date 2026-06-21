@@ -63,7 +63,7 @@ class ClientApplicationViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Obtener eventos del timeline (solo visibles para el cliente)
         timeline_events = application.status_history.filter(
-            is_visible_to_client=True
+            is_visible_to_borrower=True
         ).order_by('-created_at')
         
         serializer = TimelineEventSerializer(timeline_events, many=True)
@@ -80,7 +80,7 @@ class ClientApplicationViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Obtener acciones pendientes
         pending_actions = application.status_history.filter(
-            is_visible_to_client=True,
+            is_visible_to_borrower=True,
             requires_client_action=True,
             action_completed_at__isnull=True
         ).order_by('-created_at')

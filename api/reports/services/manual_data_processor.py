@@ -205,11 +205,12 @@ class ManualDataProcessor:
         avg_days = 0
         processed_count = processed_apps.count()
         if processed_count > 0:
-            apps_list = list(processed_apps.only('reviewed_at', 'submitted_at'))
+            # Usar values_list para evitar conflicto entre only() y select_related()
+            date_pairs = processed_apps.values_list('submitted_at', 'reviewed_at')
             total_days = sum([
-                (app.reviewed_at - app.submitted_at).days
-                for app in apps_list
-                if app.reviewed_at and app.submitted_at
+                (reviewed - submitted).days
+                for submitted, reviewed in date_pairs
+                if submitted and reviewed
             ])
             avg_days = total_days / processed_count if processed_count > 0 else 0
         

@@ -83,8 +83,11 @@ INSTALLED_APPS = [
     'api.garantias',  # Gestión de garantias
     'api.identity_verification',  # Verificación de identidad con Didit
     'api.reports',  # Reportes personalizables con audio
+    'api.integrations',  # Gestión de integraciones externas
+    'api.chatbot',  # Chatbot de asistencia virtual con Groq
     'api.notifications.apps.NotificationsConfig',  # Notificaciones Push
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
