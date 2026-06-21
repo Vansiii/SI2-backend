@@ -107,7 +107,7 @@ weasyprint>=60.1
 stripe>=9.0.0
 
 # Scheduling - Tareas programadas
-django-cron==0.6.1
+django-cron==0.6.0
 
 # Firebase Cloud Messaging
 firebase-admin>=7.4.0
